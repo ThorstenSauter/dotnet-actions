@@ -1,0 +1,18 @@
+* text=auto
+
+*.jpg  	binary
+*.png 	binary
+*.gif 	binary
+
+*.in text eol=lf
+*.sh text eol=lf
+*.tf text eol=lf
+
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.json text eol=lf
