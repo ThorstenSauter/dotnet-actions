@@ -1,0 +1,111 @@
+﻿name: Build solution and run tests
+description: >-
+  This action installs the .NET SDK with the version specified in the given `global.json` file and connects it to the
+  specified NuGet feed. It then builds the given solution with the given run configuration. As an optional step, which
+  is enabled by default, it runs all tests, collects code coverage of the given type and creates or updates an existing
+  pull request comment with the test coverage.
+inputs:
+  code-coverage-type:
+    description: |
+      The type of code coverage to collect. The available options are "coverlet" and "extensions-code-coverage".
+      Defaults to "coverlet".
+    required: false
+    default: 'coverlet'
+  configuration:
+    description: 'The configuration to build the solution in. Defaults to "Release".'
+    required: false
+    default: 'Release'
+  github-token:
+    description: 'The GitHub token used to create and update the pull request comment.'
+    required: true
+  global-json-file:
+    description: 'The path to the `global.json` file specifying the .NET SDK version to install.'
+    required: false
+    default: 'global.json'
+  nuget-auth-token:
+    description: 'The token used to authenticate to the custom NuGet feed specified in `nuget-feed-uri`.'
+    required: true
+  nuget-feed-uri:
+    description: 'The URI of the custom NuGet feed to connect to.'
+    required: true
+  run-tests:
+    description: 'Whether to run tests. Defaults to "true". Any other value disables the tests.'
+    required: false
+    default: 'true'
+  solution-path:
+    description: 'The path to the .NET solution file, project file or directory. Defaults to the root directory'
+    required: false
+    default: '.'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate code-coverage-type input
+      shell: bash
+      run: |
+        VALID_VALUES=("coverlet" "extensions-code-coverage")
+        if [[ ! " ${VALID_VALUES[@]} " =~ "${{ inputs.code-coverage-type }}" ]]; then
+          echo "Invalid value for input code-coverage-type: ${{ inputs.code-coverage-type }}"
+          exit 1
+        fi
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: ${{ inputs.global-json-file }}
+        source-url: ${{ inputs.nuget-feed-uri }}
+      env:
+        NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
+    - name: Restore dependencies
+      shell: bash
+      run: dotnet restore ${{ inputs.solution-path }}
+    - name: Build
+      shell: bash
+      run: dotnet build -c ${{ inputs.configuration }} --no-restore ${{ inputs.solution-path }}
+    - name: Test
+      if: ${{ inputs.run-tests == 'true' && inputs.code-coverage-type == 'coverlet'}}
+      shell: bash
+      run: |
+        dotnet test -c ${{ inputs.configuration }} \
+        --no-build \
+        --verbosity normal \
+        --collect:"XPlat Code Coverage" \
+        --results-directory ./coverage \
+        ${{ inputs.solution-path }}
+    - name: Test
+      if: ${{ inputs.run-tests == 'true' && inputs.code-coverage-type == 'extensions-code-coverage'}}
+      shell: bash
+      run: |
+        dotnet test -c ${{ inputs.configuration }} \
+        --no-build \
+        --verbosity normal \
+        ${{ inputs.solution-path }} \
+        -- \
+        --coverage \
+        --coverage-output-format cobertura \
+        --coverage-output coverage.cobertura.xml \
+        --results-directory ./coverage
+    - name: ReportGenerator
+      uses: danielpalme/ReportGenerator-GitHub-Action@v5.4.3
+      if: ${{ inputs.run-tests == 'true' }}
+      with:
+        reports: '**/coverage/**/coverage.cobertura.xml'
+        targetdir: 'coveragereport'
+        reporttypes: 'HtmlInline;Cobertura'
+    - name: Code Coverage Report
+      uses: irongut/CodeCoverageSummary@v1.3.0
+      if: ${{ inputs.run-tests == 'true' }}
+      with:
+        filename: 'coveragereport/Cobertura.xml'
+        badge: true
+        format: markdown
+        hide_branch_rate: false
+        hide_complexity: true
+        indicators: true
+        output: both
+    - name: Add Coverage PR Comment
+      uses: marocchino/sticky-pull-request-comment@v2
+      if: ${{ inputs.run-tests == 'true' }}
+      with:
+        header: 'codecoverage'
+        recreate: true
+        path: code-coverage-results.md
