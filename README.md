@@ -14,10 +14,6 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
-  pull-requests: write
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
