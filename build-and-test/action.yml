@@ -49,7 +49,7 @@ runs:
           exit 1
         fi
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
       with:
         global-json-file: ${{ inputs.global-json-file }}
         source-url: ${{ inputs.nuget-feed-uri }}
@@ -85,14 +85,14 @@ runs:
         --coverage-output coverage.cobertura.xml \
         --results-directory ./coverage
     - name: ReportGenerator
-      uses: danielpalme/ReportGenerator-GitHub-Action@v5.4.7
+      uses: danielpalme/ReportGenerator-GitHub-Action@c9576654e2fea2faa7b69e59550b3805bf6a9977 # v5.4.7
       if: ${{ inputs.run-tests == 'true' }}
       with:
         reports: '**/coverage/**/coverage.cobertura.xml'
         targetdir: 'coveragereport'
         reporttypes: 'HtmlInline;Cobertura'
     - name: Code Coverage Report
-      uses: irongut/CodeCoverageSummary@v1.3.0
+      uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95 # v1.3.0
       if: ${{ inputs.run-tests == 'true' }}
       with:
         filename: 'coveragereport/Cobertura.xml'
@@ -103,7 +103,7 @@ runs:
         indicators: true
         output: both
     - name: Add Coverage PR Comment
-      uses: marocchino/sticky-pull-request-comment@v2
+      uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
       if: ${{ inputs.run-tests == 'true' }}
       with:
         header: 'codecoverage'
