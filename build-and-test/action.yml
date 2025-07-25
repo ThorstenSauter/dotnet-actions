@@ -85,7 +85,7 @@ runs:
         --coverage-output coverage.cobertura.xml \
         --results-directory ./coverage
     - name: ReportGenerator
-      uses: danielpalme/ReportGenerator-GitHub-Action@82ef2bc4c83f42bbeec82a5cd9a8e3f6156b64b9 # v5.4.9
+      uses: danielpalme/ReportGenerator-GitHub-Action@c1dd332d00304c5aa5d506aab698a5224a8fa24e # v5.4.10
       if: ${{ inputs.run-tests == 'true' }}
       with:
         reports: '**/coverage/**/coverage.cobertura.xml'
