@@ -5,12 +5,6 @@ description: >-
   is enabled by default, it runs all tests, collects code coverage of the given type and creates or updates an existing
   pull request comment with the test coverage.
 inputs:
-  code-coverage-type:
-    description: |
-      The type of code coverage to collect. The available options are "coverlet" and "extensions-code-coverage".
-      Defaults to "coverlet".
-    required: false
-    default: 'coverlet'
   configuration:
     description: 'The configuration to build the solution in. Defaults to "Release".'
     required: false
@@ -33,7 +27,7 @@ inputs:
     required: false
     default: 'true'
   solution-path:
-    description: 'The path to the .NET solution file, project file or directory. Defaults to the root directory'
+    description: 'The path to the .NET solution file. Defaults to the root directory'
     required: false
     default: '.'
 
@@ -62,24 +56,13 @@ runs:
       shell: bash
       run: dotnet build -c ${{ inputs.configuration }} --no-restore ${{ inputs.solution-path }}
     - name: Test
-      if: ${{ inputs.run-tests == 'true' && inputs.code-coverage-type == 'coverlet'}}
+      if: ${{ inputs.run-tests == 'true' }}
       shell: bash
       run: |
         dotnet test -c ${{ inputs.configuration }} \
         --no-build \
         --verbosity normal \
-        --collect:"XPlat Code Coverage" \
-        --results-directory ./coverage \
-        ${{ inputs.solution-path }}
-    - name: Test
-      if: ${{ inputs.run-tests == 'true' && inputs.code-coverage-type == 'extensions-code-coverage'}}
-      shell: bash
-      run: |
-        dotnet test -c ${{ inputs.configuration }} \
-        --no-build \
-        --verbosity normal \
-        ${{ inputs.solution-path }} \
-        -- \
+        --solution ${{ inputs.solution-path }} \
         --coverage \
         --coverage-output-format cobertura \
         --coverage-output coverage.cobertura.xml \
