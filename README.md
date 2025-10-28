@@ -34,7 +34,6 @@ jobs:
         env:
           Test__Input: 'Test' # Injecting configuration for tests
         with:
-          code-coverage-type: 'extensions-code-coverage'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           nuget-auth-token: ${{ secrets.NUGET_GITHUB_PACKAGES_TOKEN }}
           nuget-feed-uri: ${{ vars.NUGET_FEED_URI }}
