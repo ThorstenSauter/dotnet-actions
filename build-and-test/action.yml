@@ -75,7 +75,7 @@ runs:
 
           if (Test-Path $playwrightScript) {
             Write-Host "Installing Playwright browsers for $project..."
-            & $playwrightScript install
+            & $playwrightScript install --with-deps
           } else {
             Write-Error "Playwright script not found at: $playwrightScript"
             exit 1
