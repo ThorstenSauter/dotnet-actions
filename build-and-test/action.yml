@@ -16,12 +16,20 @@ inputs:
     description: 'The path to the `global.json` file specifying the .NET SDK version to install.'
     required: false
     default: 'global.json'
+  install-playwright:
+    description: 'Whether to install Playwright browsers. Defaults to "false".'
+    required: false
+    default: 'false'
   nuget-auth-token:
     description: 'The token used to authenticate to the custom NuGet feed specified in `nuget-feed-uri`.'
     required: true
   nuget-feed-uri:
     description: 'The URI of the custom NuGet feed to connect to.'
     required: true
+  playwright-projects:
+    description: 'Comma-separated list of test project names (not paths) that use Playwright (e.g., "MyApp.Tests.E2E,MyApp.Integration.Tests")'
+    required: false
+    default: ''
   run-tests:
     description: 'Whether to run tests. Defaults to "true". Any other value disables the tests.'
     required: false
@@ -34,14 +42,6 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Validate code-coverage-type input
-      shell: bash
-      run: |
-        VALID_VALUES=("coverlet" "extensions-code-coverage")
-        if [[ ! " ${VALID_VALUES[@]} " =~ "${{ inputs.code-coverage-type }}" ]]; then
-          echo "Invalid value for input code-coverage-type: ${{ inputs.code-coverage-type }}"
-          exit 1
-        fi
     - name: Setup .NET
       uses: actions/setup-dotnet@2016bd2012dba4e32de620c46fe006a3ac9f0602 # v5.0.1
       with:
@@ -51,10 +51,36 @@ runs:
         NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
     - name: Restore dependencies
       shell: bash
-      run: dotnet restore ${{ inputs.solution-path }}
+      run: |
+        dotnet restore \
+        -p:ArtifactsPath=${{ github.workspace }}/artifacts \
+        ${{ inputs.solution-path }}
     - name: Build
       shell: bash
-      run: dotnet build -c ${{ inputs.configuration }} --no-restore ${{ inputs.solution-path }}
+      run: |
+        dotnet build -c ${{ inputs.configuration }} \
+        --no-restore \
+        -p:ArtifactsPath=${{ github.workspace }}/artifacts \
+        ${{ inputs.solution-path }}
+    - name: Install Playwright browsers
+      if: ${{ inputs.run-tests == 'true' && inputs.install-playwright == 'true' }}
+      shell: pwsh
+      run: |
+        $projects = "${{ inputs.playwright-projects }}".Split(",") | Where-Object { $_ -ne "" }
+        $configuration = "${{ inputs.configuration }}".ToLower()
+
+        foreach ($project in $projects) {
+          $project = $project.Trim()
+          $playwrightScript = Join-Path "${{ github.workspace }}" "artifacts/bin/$project/$configuration/playwright.ps1"
+
+          if (Test-Path $playwrightScript) {
+            Write-Host "Installing Playwright browsers for $project..."
+            & $playwrightScript install
+          } else {
+            Write-Error "Playwright script not found at: $playwrightScript"
+            exit 1
+          }
+        }
     - name: Test
       if: ${{ inputs.run-tests == 'true' }}
       shell: bash
@@ -63,6 +89,7 @@ runs:
         --no-build \
         --verbosity normal \
         --solution ${{ inputs.solution-path }} \
+        -p:ArtifactsPath=${{ github.workspace }}/artifacts \
         --coverage \
         --coverage-output-format cobertura \
         --coverage-output coverage.cobertura.xml \
