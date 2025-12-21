@@ -51,7 +51,10 @@ runs:
         NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
     - name: Restore dependencies
       shell: bash
-      run: dotnet restore ${{ inputs.solution-path }}
+      run: |
+        dotnet restore \
+        -p:ArtifactsPath=${{ github.workspace }}/artifacts \
+        ${{ inputs.solution-path }}
     - name: Build
       shell: bash
       run: |
