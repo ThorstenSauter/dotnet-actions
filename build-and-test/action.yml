@@ -9,9 +9,6 @@ inputs:
     description: 'The configuration to build the solution in. Defaults to "Release".'
     required: false
     default: 'Release'
-  github-token:
-    description: 'The GitHub token used to create and update the pull request comment.'
-    required: true
   global-json-file:
     description: 'The path to the `global.json` file specifying the .NET SDK version to install.'
     required: false
@@ -100,13 +97,6 @@ runs:
         reports: 'coverage/**/*.cobertura.xml'
         targetdir: 'coveragereport'
         reporttypes: 'MarkdownSummaryGithub'
-    - name: Add Coverage PR Comment
-      if: ${{ inputs.run-tests == 'true' && github.event_name == 'pull_request' }}
-      run: gh pr comment $PR_NUMBER --edit-last --create-if-none --body-file coveragereport/SummaryGithub.md
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        PR_NUMBER: ${{ github.event.number }}
     - name: Publish coverage in build summary
       if: ${{ inputs.run-tests == 'true' }}
       run: cat coveragereport/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
