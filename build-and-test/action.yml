@@ -98,7 +98,7 @@ runs:
         --coverage-output-format cobertura \
         --results-directory ./coverage
     - name: ReportGenerator
-      uses: danielpalme/ReportGenerator-GitHub-Action@cf6fe1b38ed5becc89ffe056c1f240825993be5b # v5.5.4
+      uses: danielpalme/ReportGenerator-GitHub-Action@ee3806a36b8b2eb9594cb3e5fae045af7e5ead10 # v5.5.6
       if: ${{ inputs.run-tests == 'true' }}
       with:
         reports: 'coverage/**/*.cobertura.xml'
