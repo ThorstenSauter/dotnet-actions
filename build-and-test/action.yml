@@ -23,6 +23,13 @@ inputs:
   nuget-feed-uri:
     description: 'The URI of the custom NuGet feed to connect to.'
     required: true
+  playwright-browsers:
+    description: >-
+      Comma-separated list of Playwright browsers to install (e.g., "chromium" or "chromium,firefox"). Defaults to
+      "" which installs all Playwright browsers (chromium, firefox and webkit). Narrow this to only the browsers
+      your tests actually use to reduce install time and disk usage.
+    required: false
+    default: ''
   playwright-projects:
     description: 'Comma-separated list of test project names (not paths) that use Playwright (e.g., "MyApp.Tests.E2E,MyApp.Integration.Tests")'
     required: false
@@ -64,6 +71,7 @@ runs:
       shell: pwsh
       run: |
         $projects = "${{ inputs.playwright-projects }}".Split(",") | Where-Object { $_ -ne "" }
+        $browsers = @("${{ inputs.playwright-browsers }}".Split(",") | Where-Object { $_ -ne "" } | ForEach-Object { $_.Trim() })
         $configuration = "${{ inputs.configuration }}".ToLower()
 
         foreach ($project in $projects) {
@@ -71,8 +79,13 @@ runs:
           $playwrightScript = Join-Path "${{ github.workspace }}" "artifacts/bin/$project/$configuration/playwright.ps1"
 
           if (Test-Path $playwrightScript) {
-            Write-Host "Installing Playwright browsers for $project..."
-            & $playwrightScript install --with-deps
+            if ($browsers.Count -gt 0) {
+              Write-Host "Installing Playwright browsers ($($browsers -join ', ')) for $project..."
+              & $playwrightScript install @browsers --with-deps
+            } else {
+              Write-Host "Installing Playwright browsers for $project..."
+              & $playwrightScript install --with-deps
+            }
           } else {
             Write-Error "Playwright script not found at: $playwrightScript"
             exit 1
