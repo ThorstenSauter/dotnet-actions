@@ -24,17 +24,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build solution and run tests
-        uses: ThorstenSauter/dotnet-actions/build-and-test@v1
+        uses: ThorstenSauter/dotnet-actions/build-and-test@v4
         env:
           Test__Input: 'Test' # Injecting configuration for tests
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Only needed for packages from a custom feed, e.g. GitHub Packages
           nuget-auth-token: ${{ secrets.NUGET_GITHUB_PACKAGES_TOKEN }}
           nuget-feed-uri: ${{ vars.NUGET_FEED_URI }}
 ```

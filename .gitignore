@@ -1,3 +1,10 @@
 ﻿.idea/
 .vs/
 .vscode/
+
+# Self-test build output
+artifacts/
+coverage/
+coveragereport/
+bin/
+obj/

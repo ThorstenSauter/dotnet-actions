@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="SelfTest.E2E/SelfTest.E2E.csproj" />
+  <Project Path="SelfTest.Tests/SelfTest.Tests.csproj" />
+  <Project Path="SelfTest/SelfTest.csproj" />
+</Solution>
