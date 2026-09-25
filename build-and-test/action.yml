@@ -2,8 +2,8 @@
 description: >-
   This action installs the .NET SDK with the version specified in the given `global.json` file and connects it to the
   specified NuGet feed. It then builds the given solution with the given run configuration. As an optional step, which
-  is enabled by default, it runs all tests, collects code coverage of the given type and creates or updates an existing
-  pull request comment with the test coverage.
+  is enabled by default, it runs all tests, collects Cobertura code coverage and publishes a coverage summary to the
+  job summary.
 inputs:
   configuration:
     description: 'The configuration to build the solution in. Defaults to "Release".'
