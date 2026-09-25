@@ -7,7 +7,7 @@ description: >-
 inputs:
   cache-nuget:
     description: >-
-      Whether to cache NuGet packages between runs. Requires `packages.lock.json` files in the repository (see
+      Whether to cache NuGet packages between runs. Requires `packages.lock.json` files anywhere in the repository (see
       `RestorePackagesWithLockFile`). Defaults to "false".
     required: false
     default: 'false'
@@ -94,6 +94,8 @@ runs:
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         cache: ${{ steps.inputs.outputs.cache-nuget }}
+        # setup-dotnet only looks in the repository root by default.
+        cache-dependency-path: '**/packages.lock.json'
         global-json-file: ${{ inputs.global-json-file }}
         source-url: ${{ inputs.nuget-feed-uri }}
       env:

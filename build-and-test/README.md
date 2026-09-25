@@ -36,7 +36,7 @@ All boolean inputs accept `true` or `false` (case-insensitive); any other value 
 | `configuration`       | no       | `Release`     | The configuration to build the solution in.                                                                                 |
 | `global-json-file`    | no       | `global.json` | The path to the `global.json` file specifying the .NET SDK version to install.                                              |
 | `solution-path`       | no       | `.`           | The path to the .NET solution file.                                                                                         |
-| `cache-nuget`         | no       | `false`       | Whether to cache NuGet packages between runs. Requires `packages.lock.json` files.                                          |
+| `cache-nuget`         | no       | `false`       | Whether to cache NuGet packages between runs. Requires `packages.lock.json` files anywhere.                                       |
 | `run-tests`           | no       | `true`        | Whether to run tests and publish coverage.                                                                                  |
 | `install-playwright`  | no       | `false`       | Whether to install (and cache) Playwright browsers. Only applies when `run-tests` is `true`.                                |
 | `playwright-projects` | no       | `''`          | Comma-separated list of test project names (not paths) that use Playwright, e.g. `MyApp.Tests.E2E,MyApp.Integration.Tests`. |
