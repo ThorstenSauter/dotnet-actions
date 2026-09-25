@@ -31,7 +31,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build solution and run tests
-        uses: ThorstenSauter/dotnet-actions/build-and-test@v3
+        uses: ThorstenSauter/dotnet-actions/build-and-test@v4
         env:
           Test__Input: 'Test' # Injecting configuration for tests
         with:

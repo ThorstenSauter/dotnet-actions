@@ -69,7 +69,7 @@ and the usage examples in both READMEs in sync.
   Ubuntu and Windows (including a Playwright chromium E2E test), plus a build-only run with `run-tests: 'False'`.
   `.github/zizmor.yml` suppresses `self-repository` for `ci.yml` because actionlint doesn't support `$/` yet.
 - Releases are published manually as GitHub releases with `vX.Y.Z` tags. `.github/workflows/release.yml` then
-  moves the floating major tag (`v3`, …) to the release, unless it's a prerelease or not the highest release in that
+  moves the floating major tag (`v4`, …) to the release, unless it's a prerelease or not the highest release in that
   major version. Breaking input changes bump the major version.
 
 ## Conventions
