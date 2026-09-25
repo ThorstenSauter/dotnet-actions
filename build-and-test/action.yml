@@ -1,10 +1,16 @@
 ﻿name: Build solution and run tests
 description: >-
-  This action installs the .NET SDK with the version specified in the given `global.json` file and connects it to the
-  specified NuGet feed. It then builds the given solution with the given run configuration. As an optional step, which
-  is enabled by default, it runs all tests, collects Cobertura code coverage and publishes a coverage summary to the
-  job summary.
+  This action installs the .NET SDK with the version specified in the given `global.json` file and optionally connects
+  it to a custom NuGet feed. It then builds the given solution with the given run configuration. As an optional step,
+  which is enabled by default, it runs all tests, collects Cobertura code coverage and publishes a coverage summary to
+  the job summary.
 inputs:
+  cache-nuget:
+    description: >-
+      Whether to cache NuGet packages between runs. Requires `packages.lock.json` files in the repository (see
+      `RestorePackagesWithLockFile`). Defaults to "false".
+    required: false
+    default: 'false'
   configuration:
     description: 'The configuration to build the solution in. Defaults to "Release".'
     required: false
@@ -19,10 +25,12 @@ inputs:
     default: 'false'
   nuget-auth-token:
     description: 'The token used to authenticate to the custom NuGet feed specified in `nuget-feed-uri`.'
-    required: true
+    required: false
+    default: ''
   nuget-feed-uri:
-    description: 'The URI of the custom NuGet feed to connect to.'
-    required: true
+    description: 'The URI of a custom NuGet feed to connect to. Leave empty to only use the default feeds.'
+    required: false
+    default: ''
   playwright-browsers:
     description: >-
       Comma-separated list of Playwright browsers to install (e.g., "chromium" or "chromium,firefox"). Defaults to
@@ -35,7 +43,7 @@ inputs:
     required: false
     default: ''
   run-tests:
-    description: 'Whether to run tests. Defaults to "true". Any other value disables the tests.'
+    description: 'Whether to run tests. Defaults to "true".'
     required: false
     default: 'true'
   solution-path:
@@ -46,37 +54,97 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Validate inputs
+      id: inputs
+      shell: bash
+      env:
+        CACHE_NUGET: ${{ inputs.cache-nuget }}
+        INSTALL_PLAYWRIGHT: ${{ inputs.install-playwright }}
+        NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
+        NUGET_FEED_URI: ${{ inputs.nuget-feed-uri }}
+        PLAYWRIGHT_BROWSERS: ${{ inputs.playwright-browsers }}
+        PLAYWRIGHT_PROJECTS: ${{ inputs.playwright-projects }}
+        RUN_TESTS: ${{ inputs.run-tests }}
+      run: |
+        normalize_bool() {
+          local value
+          value=$(printf '%s' "$2" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+          case "$value" in
+            true|false) echo "$1=$value" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error title=Invalid input::'$1' must be 'true' or 'false', got '$2'."; exit 1 ;;
+          esac
+          eval "$3=$value"
+        }
+
+        normalize_bool cache-nuget "$CACHE_NUGET" cache_nuget
+        normalize_bool install-playwright "$INSTALL_PLAYWRIGHT" install_playwright
+        normalize_bool run-tests "$RUN_TESTS" run_tests
+
+        if [ -n "$NUGET_AUTH_TOKEN" ] && [ -z "$NUGET_FEED_URI" ]; then
+          echo "::warning title=Unused input::'nuget-auth-token' is set but 'nuget-feed-uri' is empty; the token is ignored."
+        fi
+        if [ "$install_playwright" = true ] && [ -z "$(printf '%s' "$PLAYWRIGHT_PROJECTS" | tr -d '[:space:],')" ]; then
+          echo "::warning title=No Playwright projects::'install-playwright' is 'true' but 'playwright-projects' is empty; no browsers will be installed."
+        fi
+
+        # Cache keys cannot contain commas, so derive a normalized, order-independent key segment.
+        browsers_key=$(printf '%s' "$PLAYWRIGHT_BROWSERS" | tr ',' '\n' | tr -d ' \t\r' | sed '/^$/d' | sort -u | paste -sd '_' -)
+        echo "playwright-browsers-key=${browsers_key:-all}" >> "$GITHUB_OUTPUT"
     - name: Setup .NET
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
+        cache: ${{ steps.inputs.outputs.cache-nuget }}
         global-json-file: ${{ inputs.global-json-file }}
         source-url: ${{ inputs.nuget-feed-uri }}
       env:
         NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
     - name: Restore dependencies
       shell: bash
-      run: |
-        dotnet restore \
-        -p:ArtifactsPath=${{ github.workspace }}/artifacts \
-        ${{ inputs.solution-path }}
+      env:
+        ARTIFACTS_PATH: ${{ github.workspace }}/artifacts
+        SOLUTION_PATH: ${{ inputs.solution-path }}
+      run: dotnet restore -p:ArtifactsPath="$ARTIFACTS_PATH" "$SOLUTION_PATH"
     - name: Build
       shell: bash
+      env:
+        ARTIFACTS_PATH: ${{ github.workspace }}/artifacts
+        CONFIGURATION: ${{ inputs.configuration }}
+        SOLUTION_PATH: ${{ inputs.solution-path }}
       run: |
-        dotnet build -c ${{ inputs.configuration }} \
+        dotnet build -c "$CONFIGURATION" \
         --no-restore \
-        -p:ArtifactsPath=${{ github.workspace }}/artifacts \
-        ${{ inputs.solution-path }}
+        -p:ArtifactsPath="$ARTIFACTS_PATH" \
+        "$SOLUTION_PATH"
+    - name: Cache Playwright browsers
+      if: ${{ steps.inputs.outputs.run-tests == 'true' && steps.inputs.outputs.install-playwright == 'true' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        # Playwright's default browser locations; see https://playwright.dev/dotnet/docs/browsers#managing-browser-binaries
+        path: >-
+          ${{ env.PLAYWRIGHT_BROWSERS_PATH
+          || runner.os == 'Linux' && '~/.cache/ms-playwright'
+          || runner.os == 'macOS' && '~/Library/Caches/ms-playwright'
+          || '~/AppData/Local/ms-playwright' }}
+        # browsers.json pins the browser revisions of the Playwright version the projects were built against.
+        key: >-
+          playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.playwright-browsers-key }}-${{
+          hashFiles('artifacts/bin/**/.playwright/package/browsers.json') }}
     - name: Install Playwright browsers
-      if: ${{ inputs.run-tests == 'true' && inputs.install-playwright == 'true' }}
+      if: ${{ steps.inputs.outputs.run-tests == 'true' && steps.inputs.outputs.install-playwright == 'true' }}
       shell: pwsh
+      env:
+        ARTIFACTS_PATH: ${{ github.workspace }}/artifacts
+        CONFIGURATION: ${{ inputs.configuration }}
+        PLAYWRIGHT_BROWSERS: ${{ inputs.playwright-browsers }}
+        PLAYWRIGHT_PROJECTS: ${{ inputs.playwright-projects }}
       run: |
-        $projects = "${{ inputs.playwright-projects }}".Split(",") | Where-Object { $_ -ne "" }
-        $browsers = @("${{ inputs.playwright-browsers }}".Split(",") | Where-Object { $_ -ne "" } | ForEach-Object { $_.Trim() })
-        $configuration = "${{ inputs.configuration }}".ToLower()
+        $projects = "$env:PLAYWRIGHT_PROJECTS".Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+        $browsers = @("$env:PLAYWRIGHT_BROWSERS".Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+        $configuration = "$env:CONFIGURATION".ToLower()
 
+        # Browsers restored from the cache are skipped by `install`; `--with-deps` still installs the OS dependencies.
         foreach ($project in $projects) {
-          $project = $project.Trim()
-          $playwrightScript = Join-Path "${{ github.workspace }}" "artifacts/bin/$project/$configuration/playwright.ps1"
+          $playwrightScript = Join-Path $env:ARTIFACTS_PATH "bin/$project/$configuration/playwright.ps1"
 
           if (Test-Path $playwrightScript) {
             if ($browsers.Count -gt 0) {
@@ -86,38 +154,56 @@ runs:
               Write-Host "Installing Playwright browsers for $project..."
               & $playwrightScript install --with-deps
             }
+            if ($LASTEXITCODE) {
+              Write-Error "Playwright browser installation failed for $project"
+              exit $LASTEXITCODE
+            }
           } else {
             Write-Error "Playwright script not found at: $playwrightScript"
             exit 1
           }
         }
     - name: Expose GitHub Actions Runtime
-      if: ${{ inputs.run-tests == 'true' }}
+      id: runtime
+      if: ${{ steps.inputs.outputs.run-tests == 'true' }}
       uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
+        # Passed only to the test step (e.g. for TUnit's HTML report upload) instead of exporting it to the whole job.
         script: |
-          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env['ACTIONS_RUNTIME_TOKEN']);
-          core.exportVariable('ACTIONS_RESULTS_URL', process.env['ACTIONS_RESULTS_URL']);
+          const token = process.env['ACTIONS_RUNTIME_TOKEN'];
+          if (token) {
+            core.setSecret(token);
+            core.setOutput('token', token);
+          }
+          core.setOutput('results-url', process.env['ACTIONS_RESULTS_URL'] ?? '');
     - name: Test
-      if: ${{ inputs.run-tests == 'true' }}
+      if: ${{ steps.inputs.outputs.run-tests == 'true' }}
       shell: bash
+      env:
+        ACTIONS_RESULTS_URL: ${{ steps.runtime.outputs.results-url }}
+        ACTIONS_RUNTIME_TOKEN: ${{ steps.runtime.outputs.token }}
+        ARTIFACTS_PATH: ${{ github.workspace }}/artifacts
+        CONFIGURATION: ${{ inputs.configuration }}
+        SOLUTION_PATH: ${{ inputs.solution-path }}
       run: |
-        dotnet test -c ${{ inputs.configuration }} \
+        dotnet test -c "$CONFIGURATION" \
         --no-build \
         --verbosity normal \
-        --solution ${{ inputs.solution-path }} \
-        -p:ArtifactsPath=${{ github.workspace }}/artifacts \
+        --solution "$SOLUTION_PATH" \
+        -p:ArtifactsPath="$ARTIFACTS_PATH" \
         --coverage \
         --coverage-output-format cobertura \
         --results-directory ./coverage
     - name: ReportGenerator
+      id: reportgenerator
+      # Also runs when tests fail, as long as coverage was collected.
+      if: ${{ !cancelled() && steps.inputs.outputs.run-tests == 'true' && hashFiles('coverage/**/*.cobertura.xml') != '' }}
       uses: danielpalme/ReportGenerator-GitHub-Action@d3ebf1f760f7d8ab92cc44d9bcfee7ad73722a31 # v5.5.11
-      if: ${{ inputs.run-tests == 'true' }}
       with:
         reports: 'coverage/**/*.cobertura.xml'
         targetdir: 'coveragereport'
         reporttypes: 'MarkdownSummaryGithub'
     - name: Publish coverage in build summary
-      if: ${{ inputs.run-tests == 'true' }}
-      run: cat coveragereport/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+      if: ${{ !cancelled() && steps.reportgenerator.outcome == 'success' }}
+      run: cat coveragereport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
       shell: bash
