@@ -5,8 +5,8 @@
 This action installs the .NET SDK with the version specified in the given `global.json` file and optionally connects it
 to a custom NuGet feed. It then builds the given solution with the given run configuration. As an optional step, which
 is enabled by default, it runs all tests, collects Cobertura code coverage and publishes a coverage summary to the job
-summary. The coverage summary is also published when tests fail. Playwright browsers can optionally be installed (and
-cached between runs) for the test projects that need them.
+summary. The coverage summary is also published when tests fail. Playwright browsers can optionally be installed for
+the test projects that need them.
 
 ## Requirements
 
@@ -23,7 +23,6 @@ cached between runs) for the test projects that need them.
   ```
 
 - Test projects need the `Microsoft.Testing.Extensions.CodeCoverage` package for coverage collection.
-- `cache-nuget: 'true'` requires `packages.lock.json` files, e.g. by setting `RestorePackagesWithLockFile` to `true`.
 
 ## Inputs
 
@@ -36,9 +35,8 @@ All boolean inputs accept `true` or `false` (case-insensitive); any other value 
 | `configuration`       | no       | `Release`     | The configuration to build the solution in.                                                                                 |
 | `global-json-file`    | no       | `global.json` | The path to the `global.json` file specifying the .NET SDK version to install.                                              |
 | `solution-path`       | no       | `.`           | The path to the .NET solution file.                                                                                         |
-| `cache-nuget`         | no       | `false`       | Whether to cache NuGet packages between runs. Requires `packages.lock.json` files anywhere.                                       |
 | `run-tests`           | no       | `true`        | Whether to run tests and publish coverage.                                                                                  |
-| `install-playwright`  | no       | `false`       | Whether to install (and cache) Playwright browsers. Only applies when `run-tests` is `true`.                                |
+| `install-playwright`  | no       | `false`       | Whether to install Playwright browsers. Only applies when `run-tests` is `true`.                                            |
 | `playwright-projects` | no       | `''`          | Comma-separated list of test project names (not paths) that use Playwright, e.g. `MyApp.Tests.E2E,MyApp.Integration.Tests`. |
 | `playwright-browsers` | no       | `''`          | Comma-separated list of Playwright browsers to install, e.g. `chromium` or `chromium,firefox`. Empty installs all browsers.  |
 
@@ -76,7 +74,6 @@ jobs:
           # Only needed for packages from a custom feed, e.g. GitHub Packages
           nuget-auth-token: ${{ secrets.NUGET_GITHUB_PACKAGES_TOKEN }}
           nuget-feed-uri: ${{ vars.NUGET_FEED_URI }}
-          cache-nuget: 'true'
 ```
 
 ### With Playwright

@@ -5,12 +5,6 @@ description: >-
   which is enabled by default, it runs all tests, collects Cobertura code coverage and publishes a coverage summary to
   the job summary.
 inputs:
-  cache-nuget:
-    description: >-
-      Whether to cache NuGet packages between runs. Requires `packages.lock.json` files anywhere in the repository (see
-      `RestorePackagesWithLockFile`). Defaults to "false".
-    required: false
-    default: 'false'
   configuration:
     description: 'The configuration to build the solution in. Defaults to "Release".'
     required: false
@@ -58,11 +52,9 @@ runs:
       id: inputs
       shell: bash
       env:
-        CACHE_NUGET: ${{ inputs.cache-nuget }}
         INSTALL_PLAYWRIGHT: ${{ inputs.install-playwright }}
         NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
         NUGET_FEED_URI: ${{ inputs.nuget-feed-uri }}
-        PLAYWRIGHT_BROWSERS: ${{ inputs.playwright-browsers }}
         PLAYWRIGHT_PROJECTS: ${{ inputs.playwright-projects }}
         RUN_TESTS: ${{ inputs.run-tests }}
       run: |
@@ -76,7 +68,6 @@ runs:
           eval "$3=$value"
         }
 
-        normalize_bool cache-nuget "$CACHE_NUGET" cache_nuget
         normalize_bool install-playwright "$INSTALL_PLAYWRIGHT" install_playwright
         normalize_bool run-tests "$RUN_TESTS" run_tests
 
@@ -86,16 +77,9 @@ runs:
         if [ "$install_playwright" = true ] && [ -z "$(printf '%s' "$PLAYWRIGHT_PROJECTS" | tr -d '[:space:],')" ]; then
           echo "::warning title=No Playwright projects::'install-playwright' is 'true' but 'playwright-projects' is empty; no browsers will be installed."
         fi
-
-        # Cache keys cannot contain commas, so derive a normalized, order-independent key segment.
-        browsers_key=$(printf '%s' "$PLAYWRIGHT_BROWSERS" | tr ',' '\n' | tr -d ' \t\r' | sed '/^$/d' | sort -u | paste -sd '_' -)
-        echo "playwright-browsers-key=${browsers_key:-all}" >> "$GITHUB_OUTPUT"
     - name: Setup .NET
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
-        cache: ${{ steps.inputs.outputs.cache-nuget }}
-        # setup-dotnet only looks in the repository root by default.
-        cache-dependency-path: '**/packages.lock.json'
         global-json-file: ${{ inputs.global-json-file }}
         source-url: ${{ inputs.nuget-feed-uri }}
       env:
@@ -117,20 +101,6 @@ runs:
         --no-restore \
         -p:ArtifactsPath="$ARTIFACTS_PATH" \
         "$SOLUTION_PATH"
-    - name: Cache Playwright browsers
-      if: ${{ steps.inputs.outputs.run-tests == 'true' && steps.inputs.outputs.install-playwright == 'true' }}
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        # Playwright's default browser locations; see https://playwright.dev/dotnet/docs/browsers#managing-browser-binaries
-        path: >-
-          ${{ env.PLAYWRIGHT_BROWSERS_PATH
-          || runner.os == 'Linux' && '~/.cache/ms-playwright'
-          || runner.os == 'macOS' && '~/Library/Caches/ms-playwright'
-          || '~/AppData/Local/ms-playwright' }}
-        # browsers.json pins the browser revisions of the Playwright version the projects were built against.
-        key: >-
-          playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.playwright-browsers-key }}-${{
-          hashFiles('artifacts/bin/**/.playwright/package/browsers.json') }}
     - name: Install Playwright browsers
       if: ${{ steps.inputs.outputs.run-tests == 'true' && steps.inputs.outputs.install-playwright == 'true' }}
       shell: pwsh
@@ -144,7 +114,6 @@ runs:
         $browsers = @("$env:PLAYWRIGHT_BROWSERS".Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
         $configuration = "$env:CONFIGURATION".ToLower()
 
-        # Browsers restored from the cache are skipped by `install`; `--with-deps` still installs the OS dependencies.
         foreach ($project in $projects) {
           $playwrightScript = Join-Path $env:ARTIFACTS_PATH "bin/$project/$configuration/playwright.ps1"
 

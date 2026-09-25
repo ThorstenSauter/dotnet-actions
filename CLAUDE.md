@@ -35,17 +35,14 @@ actionlint only checks workflows; zizmor also audits `build-and-test/action.yml`
 `build-and-test/action.yml` runs these steps in order:
 
 1. **Validate inputs** (`id: inputs`) normalizes the boolean inputs (`true`/`false`, case-insensitive, anything else
-   fails) into step outputs. Later steps must gate on `steps.inputs.outputs.<name>`, never on raw `inputs.<name>`. It
-   also derives a comma-free `playwright-browsers-key` for the cache key.
+   fails) into step outputs. Later steps must gate on `steps.inputs.outputs.<name>`, never on raw `inputs.<name>`.
 2. `actions/setup-dotnet` with the SDK version from `global-json-file`. The NuGet feed is optional (an empty
-   `source-url` is skipped). NuGet caching goes through setup-dotnet's `cache` input, which needs `packages.lock.json`.
+   `source-url` is skipped).
 3. `dotnet restore` → `dotnet build --no-restore`, both with `-p:ArtifactsPath=<workspace>/artifacts`.
-4. Playwright: `actions/cache` restores the browser directory. The key hashes
-   `artifacts/bin/**/.playwright/package/browsers.json`, which only exists after the build. Then each project's
-   `artifacts/bin/<project>/<configuration lowercased>/playwright.ps1 install [browsers] --with-deps` runs. Cached
-   browsers are skipped, but OS dependencies still get installed. Keep the `@(...)` wrapper on `$browsers` so a single
-   browser isn't splatted as individual characters, and keep the `$LASTEXITCODE` check, because pwsh would otherwise
-   only report the last project's exit code.
+4. Playwright: for each project, runs
+   `artifacts/bin/<project>/<configuration lowercased>/playwright.ps1 install [browsers] --with-deps`. Keep the `@(...)`
+   wrapper on `$browsers` so a single browser isn't splatted as individual characters, and keep the `$LASTEXITCODE`
+   check, because pwsh would otherwise only report the last project's exit code.
 5. `actions/github-script` reads `ACTIONS_RUNTIME_TOKEN` / `ACTIONS_RESULTS_URL` (used by TUnit's HTML report upload)
    and passes them as masked step outputs to the Test step's `env` only. Don't `exportVariable` them, which would
    leak them to the caller's later steps.
@@ -57,13 +54,19 @@ actionlint only checks workflows; zizmor also audits `build-and-test/action.yml`
 **Script injection:** never interpolate `${{ inputs.* }}` into `run:` scripts. Pass inputs through `env:` and quote
 them (`"$VAR"` / `"$env:VAR"`). The quotes in `"$env:VAR"` matter on Windows, where an empty env var is `$null`.
 
+**No caching, on purpose.** Playwright browser caching (via `actions/cache`) and NuGet caching (setup-dotnet `cache`)
+were tried and measured in CI in PR #48. Restoring about 300 MB of browsers or 480 MB of packages took about as long as
+downloading them. Playwright saved about 7s on Ubuntu and nothing on Windows, where installing Media Foundation through
+`--with-deps` takes about 4 minutes. NuGet caching was slower on Windows. The caches also used about 1.5 GB of the
+repo's cache quota. Don't reintroduce caching without new measurements.
+
 When changing inputs or behavior, keep `action.yml`'s `description`, the inputs table in `build-and-test/README.md`,
 and the usage examples in both READMEs in sync.
 
 ## CI and releases
 
 - `.github/workflows/ci.yml`: actionlint + zizmor, then runs `./build-and-test` against `tests/SelfTest.slnx` on
-  Ubuntu and Windows (with Playwright + NuGet caching), plus a build-only run with `run-tests: 'False'`.
+  Ubuntu and Windows (including a Playwright chromium E2E test), plus a build-only run with `run-tests: 'False'`.
   `.github/zizmor.yml` suppresses `self-repository` for `ci.yml` because actionlint doesn't support `$/` yet.
 - Releases are published manually as GitHub releases with `vX.Y.Z` tags. `.github/workflows/release.yml` then
   moves the floating major tag (`v3`, …) to the release, unless it's a prerelease or not the highest release in that

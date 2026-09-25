@@ -53,7 +53,6 @@ jobs:
       - name: Build solution and run tests
         uses: ./build-and-test
         with:
-          cache-nuget: 'true'
           install-playwright: 'true'
           playwright-browsers: 'chromium'
           playwright-projects: 'SelfTest.E2E'
