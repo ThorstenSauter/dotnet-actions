@@ -21,7 +21,7 @@ from nuget.org never matches the attested package digest. The assemblies inside 
 those:
 
 ```bash
-unzip -o MyLibrary.1.2.3.nupkg 'lib/*' -d MyLibrary
+unzip -q -o MyLibrary.1.2.3.nupkg -d MyLibrary
 gh attestation verify MyLibrary/lib/net10.0/MyLibrary.dll --repo OWNER/REPO
 ```
 
