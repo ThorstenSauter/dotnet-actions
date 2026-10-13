@@ -70,7 +70,9 @@ and the usage examples in both READMEs in sync.
 `dotnet pack -p:Version=... -p:ContinuousIntegrationBuild=true -o artifacts/packages`, fails if no `.nupkg` was
 produced, and uploads `artifacts/packages` as a workflow artifact. When publishing, `actions/attest` first creates a
 build provenance attestation (skipped with `attest: 'false'`, caller needs `attestations: write`) from a
-`sha256sum`-style checksums file listing every `.nupkg`/`.snupkg` **and every `.dll` extracted from the packages**.
+`sha256sum`-style checksums file listing every `.nupkg`/`.snupkg` **and every `.dll` and `_manifest/**/*.spdx.json`
+extracted from the packages**. The SBOM is attested as a provenance subject, not as an SBOM attestation, because
+`actions/attest`'s SBOM mode only accepts SPDX 2.x (`spdxVersion` + `SPDXID`) or CycloneDX, and Sbom emits SPDX 3.0.1.
 The assemblies are the point: nuget.org adds `.signature.p7s` to each package, so a downloaded `.nupkg` never matches
 the attested digest, but its assemblies do. Keep `shasum -a 256` (portable to macOS and Git Bash) and full extraction
 plus `find` (unzip's `*` matching across `/` differs between builds). Attestation runs before the push so a failed

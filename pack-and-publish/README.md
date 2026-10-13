@@ -12,7 +12,9 @@ on the feed are skipped.
 Before pushing, the action creates a signed
 [build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
 with [`actions/attest`](https://github.com/actions/attest), so a failed attestation never leaves an unattested
-package on the feed. The subjects are every `.nupkg` and `.snupkg` **and every assembly inside the packages**.
+package on the feed. The subjects are every `.nupkg` and `.snupkg` **and every assembly inside the packages**, plus
+any SPDX SBOM embedded under `_manifest/` (e.g. by [Sbom](https://github.com/SimonCropp/Sbom) or
+Microsoft.Sbom.Targets), which proves the SBOM came from the same build.
 
 nuget.org repository-signs each package it accepts by adding `.signature.p7s` to the zip, so a `.nupkg` downloaded
 from nuget.org never matches the attested package digest. The assemblies inside are unchanged, so consumers verify

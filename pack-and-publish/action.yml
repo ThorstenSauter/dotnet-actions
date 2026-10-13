@@ -126,7 +126,8 @@ runs:
       run: |
         # nuget.org repository-signs every package it accepts by adding .signature.p7s to the zip, so a .nupkg
         # downloaded from the feed never matches the digest of the file built here. The assemblies inside are left
-        # untouched, so they are attested too: that is what a consumer can actually verify.
+        # untouched, so they are attested too: that is what a consumer can actually verify. The same goes for an SBOM
+        # embedded under _manifest/ (SPDX of any version, e.g. from Sbom or Microsoft.Sbom.Targets).
         subjects="$RUNNER_TEMP/attestation-subjects.txt"
         contents="$RUNNER_TEMP/attestation-contents"
         : > "$subjects"
@@ -139,10 +140,11 @@ runs:
         for package in "$PACKAGES_PATH"/*.nupkg; do
           name=$(basename "$package" .nupkg)
           mkdir -p "$contents/$name"
-          # Extract everything and let find pick the assemblies: unzip's wildcard matching across "/" differs
-          # between builds, and a package without assemblies (e.g. a metapackage) simply contributes none.
+          # Extract everything and let find pick the files: unzip's wildcard matching across "/" differs between
+          # builds, and a package without assemblies or SBOM (e.g. a metapackage) simply contributes none.
           unzip -q -o "$package" -d "$contents/$name"
-          (cd "$contents/$name" && find . -type f -name '*.dll' | LC_ALL=C sort | while read -r file; do
+          (cd "$contents/$name" && find . -type f \( -name '*.dll' -o -path './_manifest/*.spdx.json' \) \
+            | LC_ALL=C sort | while read -r file; do
             printf '%s  %s\n' "$(shasum -a 256 "$file" | cut -d' ' -f1)" "$name/${file#./}"
           done) >> "$subjects"
         done
