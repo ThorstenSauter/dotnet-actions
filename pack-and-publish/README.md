@@ -9,11 +9,21 @@ then logs in to nuget.org with [trusted publishing](https://learn.microsoft.com/
 and pushes the packages. Symbol packages (`.snupkg`) are pushed along with their package. Versions that already exist
 on the feed are skipped.
 
+Before pushing, the action creates a signed
+[build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
+for every `.nupkg` and `.snupkg` with [`actions/attest`](https://github.com/actions/attest), so a failed attestation
+never leaves an unattested package on the feed. Consumers can verify a downloaded package with:
+
+```bash
+gh attestation verify MyLibrary.1.2.3.nupkg --repo OWNER/REPO
+```
+
 ## Requirements
 
 - A trusted publishing policy on nuget.org for the repository and the workflow file that calls this action, owned by
   the account given in `nuget-user`.
-- The calling job needs the `id-token: write` permission to publish.
+- The calling job needs the `id-token: write` permission to publish, and `attestations: write` unless `attest` is
+  `false`. Attestations are free for public repositories; private ones need a GitHub plan that includes them.
 - The packed projects must be packable; test projects should set `<IsPackable>false</IsPackable>`.
 
 ## Inputs
@@ -30,6 +40,8 @@ All boolean inputs accept `true` or `false` (case-insensitive); any other value 
 | `configuration`    | no       | `Release`                             | The configuration to pack in.                                                                     |
 | `global-json-file` | no       | `global.json`                         | The path to the `global.json` file specifying the .NET SDK version to install.                    |
 | `artifact-name`    | no       | `nuget-packages`                      | The name of the workflow artifact the packages are uploaded as.                                   |
+| `attest`           | no       | `true`                                | Whether to attest build provenance before pushing. Only applies when `publish` is `true`.         |
+| `attest`           | no       | `true`                                | Whether to attest build provenance before pushing. Only applies when `publish` is `true`.         |
 
 ## Outputs
 
@@ -56,7 +68,8 @@ jobs:
     environment: nuget
     permissions:
       contents: read
-      id-token: write # Trusted publishing
+      attestations: write # Build provenance attestations
+      id-token: write # Trusted publishing and attestation signing
     timeout-minutes: 10
     steps:
       - name: Checkout repository

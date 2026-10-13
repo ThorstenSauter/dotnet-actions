@@ -3,13 +3,20 @@ description: >-
   This action installs the .NET SDK with the version specified in the given `global.json` file, packs the given
   project or solution with the given version and uploads the packages as a workflow artifact. Unless publishing is
   disabled, it then exchanges the workflow's OIDC token for a short-lived nuget.org API key (trusted publishing) and
-  pushes the packages, including symbol packages, to the given NuGet feed. The calling job needs the
-  `id-token: write` permission to publish.
+  pushes the packages, including symbol packages, to the given NuGet feed. Before pushing, it creates a signed GitHub
+  build provenance attestation for every package unless `attest` is "false". The calling job needs the
+  `id-token: write` permission to publish, plus `attestations: write` to attest.
 inputs:
   artifact-name:
     description: 'The name of the workflow artifact the packages are uploaded as. Defaults to "nuget-packages".'
     required: false
     default: 'nuget-packages'
+  attest:
+    description: >-
+      Whether to create a GitHub build provenance attestation for the packages before pushing them. Only applies when
+      `publish` is "true". Defaults to "true".
+    required: false
+    default: 'true'
   configuration:
     description: 'The configuration to pack in. Defaults to "Release".'
     required: false
@@ -52,15 +59,23 @@ runs:
       id: inputs
       shell: bash
       env:
+        ATTEST: ${{ inputs.attest }}
         NUGET_USER: ${{ inputs.nuget-user }}
         PUBLISH: ${{ inputs.publish }}
         VERSION: ${{ inputs.version }}
       run: |
-        publish=$(printf '%s' "$PUBLISH" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
-        case "$publish" in
-          true|false) echo "publish=$publish" >> "$GITHUB_OUTPUT" ;;
-          *) echo "::error title=Invalid input::'publish' must be 'true' or 'false', got '$PUBLISH'."; exit 1 ;;
-        esac
+        normalize_bool() {
+          local value
+          value=$(printf '%s' "$2" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+          case "$value" in
+            true|false) echo "$1=$value" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error title=Invalid input::'$1' must be 'true' or 'false', got '$2'."; exit 1 ;;
+          esac
+          eval "$3=$value"
+        }
+
+        normalize_bool attest "$ATTEST" attest
+        normalize_bool publish "$PUBLISH" publish
 
         version=$(printf '%s' "$VERSION" | tr -d '[:space:]')
         version=${version#v}
@@ -102,6 +117,13 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: ${{ github.workspace }}/artifacts/packages
         if-no-files-found: error
+    - name: Attest build provenance
+      # Before pushing, so a failed attestation never leaves an unattested package on the feed.
+      if: ${{ steps.inputs.outputs.publish == 'true' && steps.inputs.outputs.attest == 'true' }}
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        # One pattern for .nupkg and .snupkg, so projects packed without symbols don't leave an unmatched glob.
+        subject-path: ${{ github.workspace }}/artifacts/packages/*.*nupkg
     - name: Log in to NuGet
       id: login
       if: ${{ steps.inputs.outputs.publish == 'true' }}
