@@ -11,12 +11,19 @@ on the feed are skipped.
 
 Before pushing, the action creates a signed
 [build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
-for every `.nupkg` and `.snupkg` with [`actions/attest`](https://github.com/actions/attest), so a failed attestation
-never leaves an unattested package on the feed. Consumers can verify a downloaded package with:
+with [`actions/attest`](https://github.com/actions/attest), so a failed attestation never leaves an unattested
+package on the feed. The subjects are every `.nupkg` and `.snupkg` **and every assembly inside the packages**.
+
+nuget.org repository-signs each package it accepts by adding `.signature.p7s` to the zip, so a `.nupkg` downloaded
+from nuget.org never matches the attested package digest. The assemblies inside are unchanged, so consumers verify
+those:
 
 ```bash
-gh attestation verify MyLibrary.1.2.3.nupkg --repo OWNER/REPO
+unzip -o MyLibrary.1.2.3.nupkg 'lib/*' -d MyLibrary
+gh attestation verify MyLibrary/lib/net10.0/MyLibrary.dll --repo OWNER/REPO
 ```
+
+The `.nupkg` attestation still matches the copy in the workflow artifact and on feeds that don't re-sign packages.
 
 ## Requirements
 

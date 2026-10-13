@@ -117,13 +117,43 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: ${{ github.workspace }}/artifacts/packages
         if-no-files-found: error
+    - name: Collect attestation subjects
+      id: subjects
+      if: ${{ steps.inputs.outputs.publish == 'true' && steps.inputs.outputs.attest == 'true' }}
+      shell: bash
+      env:
+        PACKAGES_PATH: ${{ github.workspace }}/artifacts/packages
+      run: |
+        # nuget.org repository-signs every package it accepts by adding .signature.p7s to the zip, so a .nupkg
+        # downloaded from the feed never matches the digest of the file built here. The assemblies inside are left
+        # untouched, so they are attested too: that is what a consumer can actually verify.
+        subjects="$RUNNER_TEMP/attestation-subjects.txt"
+        contents="$RUNNER_TEMP/attestation-contents"
+        : > "$subjects"
+
+        for package in "$PACKAGES_PATH"/*.nupkg "$PACKAGES_PATH"/*.snupkg; do
+          [ -e "$package" ] || continue
+          printf '%s  %s\n' "$(shasum -a 256 "$package" | cut -d' ' -f1)" "$(basename "$package")" >> "$subjects"
+        done
+
+        for package in "$PACKAGES_PATH"/*.nupkg; do
+          name=$(basename "$package" .nupkg)
+          mkdir -p "$contents/$name"
+          # Extract everything and let find pick the assemblies: unzip's wildcard matching across "/" differs
+          # between builds, and a package without assemblies (e.g. a metapackage) simply contributes none.
+          unzip -q -o "$package" -d "$contents/$name"
+          (cd "$contents/$name" && find . -type f -name '*.dll' | LC_ALL=C sort | while read -r file; do
+            printf '%s  %s\n' "$(shasum -a 256 "$file" | cut -d' ' -f1)" "$name/${file#./}"
+          done) >> "$subjects"
+        done
+
+        echo "path=$subjects" >> "$GITHUB_OUTPUT"
     - name: Attest build provenance
       # Before pushing, so a failed attestation never leaves an unattested package on the feed.
       if: ${{ steps.inputs.outputs.publish == 'true' && steps.inputs.outputs.attest == 'true' }}
       uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
       with:
-        # One pattern for .nupkg and .snupkg, so projects packed without symbols don't leave an unmatched glob.
-        subject-path: ${{ github.workspace }}/artifacts/packages/*.*nupkg
+        subject-checksums: ${{ steps.subjects.outputs.path }}
     - name: Log in to NuGet
       id: login
       if: ${{ steps.inputs.outputs.publish == 'true' }}

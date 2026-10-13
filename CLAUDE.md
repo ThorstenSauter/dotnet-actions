@@ -69,9 +69,12 @@ and the usage examples in both READMEs in sync.
 `v` stripped so a release tag can be passed directly; exposed as the `version` output), installs the SDK, runs
 `dotnet pack -p:Version=... -p:ContinuousIntegrationBuild=true -o artifacts/packages`, fails if no `.nupkg` was
 produced, and uploads `artifacts/packages` as a workflow artifact. When publishing, `actions/attest` first creates a
-build provenance attestation for `artifacts/packages/*.*nupkg` (one glob covering `.nupkg` and `.snupkg`; skipped
-with `attest: 'false'`, caller needs `attestations: write`). It runs before the push so a failed attestation never
-leaves an unattested package on the feed. Then `NuGet/login` exchanges the job's
+build provenance attestation (skipped with `attest: 'false'`, caller needs `attestations: write`) from a
+`sha256sum`-style checksums file listing every `.nupkg`/`.snupkg` **and every `.dll` extracted from the packages**.
+The assemblies are the point: nuget.org adds `.signature.p7s` to each package, so a downloaded `.nupkg` never matches
+the attested digest, but its assemblies do. Keep `shasum -a 256` (portable to macOS and Git Bash) and full extraction
+plus `find` (unzip's `*` matching across `/` differs between builds). Attestation runs before the push so a failed
+attestation never leaves an unattested package on the feed. Then `NuGet/login` exchanges the job's
 OIDC token for a short-lived nuget.org key (trusted publishing; the caller needs `id-token: write`), and
 `dotnet nuget push --skip-duplicate` pushes the packages; `.snupkg` files beside them go along automatically. There
 is no stored API key input on purpose.
