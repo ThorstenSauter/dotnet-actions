@@ -80,3 +80,29 @@ jobs:
       - name: Verify tests were skipped
         shell: bash
         run: test ! -e coverage
+
+  self-test-pack:
+    name: Self-test (pack only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pack without publishing
+        id: pack
+        uses: ./pack-and-publish
+        with:
+          project-path: 'tests/SelfTest/SelfTest.csproj'
+          publish: 'False' # Mixed case on purpose to cover input normalization
+          version: 'v1.2.3-ci.4' # Leading "v" on purpose to cover tag normalization
+      - name: Verify package was packed with the normalized version
+        shell: bash
+        env:
+          VERSION: ${{ steps.pack.outputs.version }}
+        run: |
+          test "$VERSION" = '1.2.3-ci.4'
+          test -s artifacts/packages/SelfTest.1.2.3-ci.4.nupkg

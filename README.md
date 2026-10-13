@@ -42,6 +42,7 @@ jobs:
 
 ## Actions
 
-The repository currently contains one action:
+The repository contains these actions:
 
 - [Build and test](./build-and-test) `ThorstenSauter/dotnet-actions/build-and-test`
+- [Pack and publish](./pack-and-publish) `ThorstenSauter/dotnet-actions/pack-and-publish`

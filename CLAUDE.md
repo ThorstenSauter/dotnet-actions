@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collection of reusable **composite GitHub Actions** for .NET projects, consumed from other repos as
 `ThorstenSauter/dotnet-actions/<action-dir>@<tag>`. Each action lives in its own top-level directory with an
-`action.yml` and a `README.md`. Currently the only action is `build-and-test/`.
+`action.yml` and a `README.md`. The actions are `build-and-test/` and `pack-and-publish/`.
 
 The .NET code in `tests/` (plus the root `global.json`) is **not** a product — it's a tiny sample solution that CI runs
 the action against. The root `global.json` has to stay at the repo root because `dotnet test` reads the
@@ -63,10 +63,30 @@ repo's cache quota. Don't reintroduce caching without new measurements.
 When changing inputs or behavior, keep `action.yml`'s `description`, the inputs table in `build-and-test/README.md`,
 and the usage examples in both READMEs in sync.
 
+## `pack-and-publish` action flow
+
+`pack-and-publish/action.yml` validates `publish` (same boolean normalization) and `version` (SemVer 2.0, leading
+`v` stripped so a release tag can be passed directly; exposed as the `version` output), installs the SDK, runs
+`dotnet pack -p:Version=... -p:ContinuousIntegrationBuild=true -o artifacts/packages`, fails if no `.nupkg` was
+produced, and uploads `artifacts/packages` as a workflow artifact. When publishing, `actions/attest` first creates a
+build provenance attestation (skipped with `attest: 'false'`, caller needs `attestations: write`) from a
+`sha256sum`-style checksums file listing every `.nupkg`/`.snupkg` **and every `.dll` and `_manifest/**/*.spdx.json`
+extracted from the packages**. The SBOM is attested as a provenance subject, not as an SBOM attestation, because
+`actions/attest`'s SBOM mode only accepts SPDX 2.x (`spdxVersion` + `SPDXID`) or CycloneDX, and Sbom emits SPDX 3.0.1.
+The assemblies are the point: nuget.org adds `.signature.p7s` to each package, so a downloaded `.nupkg` never matches
+the attested digest, but its assemblies do. Keep `shasum -a 256` (portable to macOS and Git Bash) and full extraction
+plus `find` (unzip's `*` matching across `/` differs between builds). Attestation runs before the push so a failed
+attestation never leaves an unattested package on the feed. Then `NuGet/login` exchanges the job's
+OIDC token for a short-lived nuget.org key (trusted publishing; the caller needs `id-token: write`), and
+`dotnet nuget push --skip-duplicate` pushes the packages; `.snupkg` files beside them go along automatically. There
+is no stored API key input on purpose.
+
 ## CI and releases
 
 - `.github/workflows/ci.yml`: actionlint + zizmor, then runs `./build-and-test` against `tests/SelfTest.slnx` on
-  Ubuntu and Windows (including a Playwright chromium E2E test), plus a build-only run with `run-tests: 'False'`.
+  Ubuntu and Windows (including a Playwright chromium E2E test), plus a build-only run with `run-tests: 'False'`
+  and a pack-only run of `./pack-and-publish` (`publish: 'False'`, version `v1.2.3-ci.4`) that checks the normalized
+  version and the produced `.nupkg`. Publishing itself is only exercised by consuming repos.
   `.github/zizmor.yml` suppresses `self-repository` for `ci.yml` because actionlint doesn't support `$/` yet.
 - Releases are published manually as GitHub releases with `vX.Y.Z` tags. `.github/workflows/release.yml` then
   moves the floating major tag (`v4`, …) to the release, unless it's a prerelease or not the highest release in that

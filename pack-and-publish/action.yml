@@ -1,0 +1,177 @@
+﻿name: Pack and publish NuGet packages
+description: >-
+  This action installs the .NET SDK with the version specified in the given `global.json` file, packs the given
+  project or solution with the given version and uploads the packages as a workflow artifact. Unless publishing is
+  disabled, it then exchanges the workflow's OIDC token for a short-lived nuget.org API key (trusted publishing) and
+  pushes the packages, including symbol packages, to the given NuGet feed. Before pushing, it creates a signed GitHub
+  build provenance attestation for every package unless `attest` is "false". The calling job needs the
+  `id-token: write` permission to publish, plus `attestations: write` to attest.
+inputs:
+  artifact-name:
+    description: 'The name of the workflow artifact the packages are uploaded as. Defaults to "nuget-packages".'
+    required: false
+    default: 'nuget-packages'
+  attest:
+    description: >-
+      Whether to create a GitHub build provenance attestation for the packages before pushing them. Only applies when
+      `publish` is "true". Defaults to "true".
+    required: false
+    default: 'true'
+  configuration:
+    description: 'The configuration to pack in. Defaults to "Release".'
+    required: false
+    default: 'Release'
+  global-json-file:
+    description: 'The path to the `global.json` file specifying the .NET SDK version to install.'
+    required: false
+    default: 'global.json'
+  nuget-source:
+    description: 'The NuGet feed to push to. Defaults to nuget.org.'
+    required: false
+    default: 'https://api.nuget.org/v3/index.json'
+  nuget-user:
+    description: >-
+      The nuget.org user name (profile name, not email address) that owns the trusted publishing policy. Required
+      when `publish` is "true".
+    required: false
+    default: ''
+  project-path:
+    description: 'The path to the project or solution to pack.'
+    required: true
+  publish:
+    description: 'Whether to push the packages. Set to "false" to only pack and upload the artifact. Defaults to "true".'
+    required: false
+    default: 'true'
+  version:
+    description: >-
+      The package version, e.g. "1.2.3" or "1.2.3-rc.1". A leading "v" is removed, so a release tag such as
+      "v1.2.3" can be passed as is.
+    required: true
+outputs:
+  version:
+    description: 'The normalized package version that was packed.'
+    value: ${{ steps.inputs.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      id: inputs
+      shell: bash
+      env:
+        ATTEST: ${{ inputs.attest }}
+        NUGET_USER: ${{ inputs.nuget-user }}
+        PUBLISH: ${{ inputs.publish }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        normalize_bool() {
+          local value
+          value=$(printf '%s' "$2" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+          case "$value" in
+            true|false) echo "$1=$value" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error title=Invalid input::'$1' must be 'true' or 'false', got '$2'."; exit 1 ;;
+          esac
+          eval "$3=$value"
+        }
+
+        normalize_bool attest "$ATTEST" attest
+        normalize_bool publish "$PUBLISH" publish
+
+        version=$(printf '%s' "$VERSION" | tr -d '[:space:]')
+        version=${version#v}
+        if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$'; then
+          echo "::error title=Invalid input::'version' must be a SemVer 2.0 version such as '1.2.3' or '1.2.3-rc.1', got '$VERSION'."
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+        if [ "$publish" = true ] && [ -z "$(printf '%s' "$NUGET_USER" | tr -d '[:space:]')" ]; then
+          echo "::error title=Missing input::'nuget-user' is required when 'publish' is 'true'."
+          exit 1
+        fi
+    - name: Setup .NET
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        global-json-file: ${{ inputs.global-json-file }}
+    - name: Pack
+      shell: bash
+      env:
+        CONFIGURATION: ${{ inputs.configuration }}
+        PACKAGES_PATH: ${{ github.workspace }}/artifacts/packages
+        PROJECT_PATH: ${{ inputs.project-path }}
+        VERSION: ${{ steps.inputs.outputs.version }}
+      run: |
+        dotnet pack -c "$CONFIGURATION" \
+        -p:Version="$VERSION" \
+        -p:ContinuousIntegrationBuild=true \
+        -o "$PACKAGES_PATH" \
+        "$PROJECT_PATH"
+
+        if ! compgen -G "$PACKAGES_PATH/*.nupkg" > /dev/null; then
+          echo "::error title=No packages::'dotnet pack' produced no .nupkg files. Is the project packable?"
+          exit 1
+        fi
+    - name: Upload packages
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ github.workspace }}/artifacts/packages
+        if-no-files-found: error
+    - name: Collect attestation subjects
+      id: subjects
+      if: ${{ steps.inputs.outputs.publish == 'true' && steps.inputs.outputs.attest == 'true' }}
+      shell: bash
+      env:
+        PACKAGES_PATH: ${{ github.workspace }}/artifacts/packages
+      run: |
+        # nuget.org repository-signs every package it accepts by adding .signature.p7s to the zip, so a .nupkg
+        # downloaded from the feed never matches the digest of the file built here. The assemblies inside are left
+        # untouched, so they are attested too: that is what a consumer can actually verify. The same goes for an SBOM
+        # embedded under _manifest/ (SPDX of any version, e.g. from Sbom or Microsoft.Sbom.Targets).
+        subjects="$RUNNER_TEMP/attestation-subjects.txt"
+        contents="$RUNNER_TEMP/attestation-contents"
+        : > "$subjects"
+
+        for package in "$PACKAGES_PATH"/*.nupkg "$PACKAGES_PATH"/*.snupkg; do
+          [ -e "$package" ] || continue
+          printf '%s  %s\n' "$(shasum -a 256 "$package" | cut -d' ' -f1)" "$(basename "$package")" >> "$subjects"
+        done
+
+        for package in "$PACKAGES_PATH"/*.nupkg; do
+          name=$(basename "$package" .nupkg)
+          mkdir -p "$contents/$name"
+          # Extract everything and let find pick the files: unzip's wildcard matching across "/" differs between
+          # builds, and a package without assemblies or SBOM (e.g. a metapackage) simply contributes none.
+          unzip -q -o "$package" -d "$contents/$name"
+          (cd "$contents/$name" && find . -type f \( -name '*.dll' -o -path './_manifest/*.spdx.json' \) \
+            | LC_ALL=C sort | while read -r file; do
+            printf '%s  %s\n' "$(shasum -a 256 "$file" | cut -d' ' -f1)" "$name/${file#./}"
+          done) >> "$subjects"
+        done
+
+        echo "path=$subjects" >> "$GITHUB_OUTPUT"
+    - name: Attest build provenance
+      # Before pushing, so a failed attestation never leaves an unattested package on the feed.
+      if: ${{ steps.inputs.outputs.publish == 'true' && steps.inputs.outputs.attest == 'true' }}
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        subject-checksums: ${{ steps.subjects.outputs.path }}
+    - name: Log in to NuGet
+      id: login
+      if: ${{ steps.inputs.outputs.publish == 'true' }}
+      uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+      with:
+        user: ${{ inputs.nuget-user }}
+    - name: Push packages
+      if: ${{ steps.inputs.outputs.publish == 'true' }}
+      shell: bash
+      env:
+        NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        NUGET_SOURCE: ${{ inputs.nuget-source }}
+        PACKAGES_PATH: ${{ github.workspace }}/artifacts/packages
+      run: |
+        # Symbol packages (.snupkg) next to a .nupkg are pushed along with it.
+        dotnet nuget push "$PACKAGES_PATH/*.nupkg" \
+        --api-key "$NUGET_API_KEY" \
+        --source "$NUGET_SOURCE" \
+        --skip-duplicate
