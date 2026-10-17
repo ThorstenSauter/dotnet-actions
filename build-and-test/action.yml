@@ -1,4 +1,4 @@
-﻿name: Build solution and run tests
+name: Build solution and run tests
 description: >-
   This action installs the .NET SDK with the version specified in the given `global.json` file and optionally connects
   it to a custom NuGet feed. It then builds the given solution with the given run configuration. As an optional step,
