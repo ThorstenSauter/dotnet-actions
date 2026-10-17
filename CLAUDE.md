@@ -90,7 +90,10 @@ is no stored API key input on purpose.
   `.github/zizmor.yml` suppresses `self-repository` for `ci.yml` because actionlint doesn't support `$/` yet.
 - Releases are published manually as GitHub releases with `vX.Y.Z` tags. `.github/workflows/release.yml` then
   moves the floating major tag (`v4`, …) to the release, unless it's a prerelease or not the highest release in that
-  major version. Breaking input changes bump the major version.
+  major version. Breaking input changes bump the major version. The "Versions" tag ruleset protects `vX.Y.Z` tags
+  (admin-only creation, no updates or deletions, signatures required); the "Major version tags" ruleset covers `v1` and
+  `v4` and only blocks deletion, so the workflow can move them. A new major version needs adding to both rulesets before
+  its first release, or the workflow can't create the tag.
 
 ## Conventions
 
@@ -98,5 +101,6 @@ is no stored API key input on purpose.
   (`.github/renovate.json`, extending `local>ThorstenSauter/renovate-config`) updates these pins and comments.
 - New inputs should be optional with a backward-compatible default.
 - Commit messages use Conventional Commits (`feat:`, `fix:`, `chore(deps):`).
-- `action.yml` and the READMEs are UTF-8 with BOM (the Write tool drops it, so re-add it). YAML/JSON/Markdown use
+- The READMEs are UTF-8 with BOM (the Write tool drops it, so re-add it). `action.yml` files must not have a BOM:
+  zizmor can't parse them with one and silently skips them. YAML/JSON/Markdown use
   2-space indentation (see `.editorconfig`).

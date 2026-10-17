@@ -1,4 +1,4 @@
-﻿name: Pack and publish NuGet packages
+name: Pack and publish NuGet packages
 description: >-
   This action installs the .NET SDK with the version specified in the given `global.json` file, packs the given
   project or solution with the given version and uploads the packages as a workflow artifact. Unless publishing is
