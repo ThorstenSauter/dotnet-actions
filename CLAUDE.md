@@ -84,9 +84,9 @@ is no stored API key input on purpose.
 ## CI and releases
 
 - `.github/workflows/ci.yml`: actionlint + zizmor, then runs `./build-and-test` against `tests/SelfTest.slnx` on
-  Ubuntu and Windows (including a Playwright chromium E2E test), plus a build-only run with `run-tests: 'False'`
-  and a pack-only run of `./pack-and-publish` (`publish: 'False'`, version `v1.2.3-ci.4`) that checks the normalized
-  version and the produced `.nupkg`. Publishing itself is only exercised by consuming repos.
+  Ubuntu (x64 and arm64) and Windows (including a Playwright chromium E2E test), plus a build-only run with
+  `run-tests: 'False'` and a pack-only run of `./pack-and-publish` (`publish: 'False'`, version `v1.2.3-ci.4`) that
+  checks the normalized version and the produced `.nupkg`. Publishing itself is only exercised by consuming repos.
   `.github/zizmor.yml` suppresses `self-repository` for `ci.yml` because actionlint doesn't support `$/` yet.
 - Releases are published manually as GitHub releases with `vX.Y.Z` tags. `.github/workflows/release.yml` then
   moves the floating major tag (`v4`, …) to the release, unless it's a prerelease or not the highest release in that

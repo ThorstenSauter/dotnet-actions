@@ -15,7 +15,7 @@ concurrency:
 jobs:
   lint:
     name: Lint workflows and actions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     permissions:
       contents: read
     timeout-minutes: 10
@@ -43,7 +43,9 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          # Callers run the actions on both x64 and arm64 Linux runners.
+          - ubuntu-26.04
+          - ubuntu-26.04-arm
           - windows-latest
     steps:
       - name: Checkout repository
@@ -63,7 +65,7 @@ jobs:
 
   self-test-build-only:
     name: Self-test (build only)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     permissions:
       contents: read
     timeout-minutes: 10
@@ -83,7 +85,7 @@ jobs:
 
   self-test-pack:
     name: Self-test (pack only)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     permissions:
       contents: read
     timeout-minutes: 10
