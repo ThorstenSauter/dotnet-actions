@@ -3,12 +3,18 @@ description: >-
   This action installs the .NET SDK with the version specified in the given `global.json` file and optionally connects
   it to a custom NuGet feed. It then builds the given solution with the given run configuration. As an optional step,
   which is enabled by default, it runs all tests, collects Cobertura code coverage and publishes a coverage summary to
-  the job summary.
+  the job summary. The tests can be narrowed to some of the solution's test projects or skip some of them.
 inputs:
   configuration:
     description: 'The configuration to build the solution in. Defaults to "Release".'
     required: false
     default: 'Release'
+  exclude-test-projects:
+    description: >-
+      Comma-separated list of project names (not paths) in the solution whose tests are skipped (e.g.,
+      "MyApp.Tests.E2E"). The whole solution is still built. Defaults to "" which skips none.
+    required: false
+    default: ''
   global-json-file:
     description: 'The path to the `global.json` file specifying the .NET SDK version to install.'
     required: false
@@ -44,6 +50,13 @@ inputs:
     description: 'The path to the .NET solution file. Defaults to the root directory'
     required: false
     default: '.'
+  test-projects:
+    description: >-
+      Comma-separated list of project names (not paths) in the solution whose tests are run (e.g.,
+      "MyApp.Tests.Unit,MyApp.Tests.Integration"). The whole solution is still built. Defaults to "" which runs the
+      tests of every project.
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -52,11 +65,13 @@ runs:
       id: inputs
       shell: bash
       env:
+        EXCLUDE_TEST_PROJECTS: ${{ inputs.exclude-test-projects }}
         INSTALL_PLAYWRIGHT: ${{ inputs.install-playwright }}
         NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
         NUGET_FEED_URI: ${{ inputs.nuget-feed-uri }}
         PLAYWRIGHT_PROJECTS: ${{ inputs.playwright-projects }}
         RUN_TESTS: ${{ inputs.run-tests }}
+        TEST_PROJECTS: ${{ inputs.test-projects }}
       run: |
         normalize_bool() {
           local value
@@ -77,6 +92,16 @@ runs:
         if [ "$install_playwright" = true ] && [ -z "$(printf '%s' "$PLAYWRIGHT_PROJECTS" | tr -d '[:space:],')" ]; then
           echo "::warning title=No Playwright projects::'install-playwright' is 'true' but 'playwright-projects' is empty; no browsers will be installed."
         fi
+
+        select_test_projects=false
+        if [ -n "$(printf '%s%s' "$TEST_PROJECTS" "$EXCLUDE_TEST_PROJECTS" | tr -d '[:space:],')" ]; then
+          if [ "$run_tests" = true ]; then
+            select_test_projects=true
+          else
+            echo "::warning title=Unused input::'test-projects' or 'exclude-test-projects' is set but 'run-tests' is 'false'; they are ignored."
+          fi
+        fi
+        echo "select-test-projects=$select_test_projects" >> "$GITHUB_OUTPUT"
     - name: Setup .NET
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
@@ -84,6 +109,83 @@ runs:
         source-url: ${{ inputs.nuget-feed-uri }}
       env:
         NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
+    - name: Select test projects
+      id: test-selection
+      # Runs before the build so a misspelled project name fails fast.
+      if: ${{ steps.inputs.outputs.select-test-projects == 'true' }}
+      shell: bash
+      env:
+        EXCLUDE_TEST_PROJECTS: ${{ inputs.exclude-test-projects }}
+        SOLUTION_PATH: ${{ inputs.solution-path }}
+        TEST_PROJECTS: ${{ inputs.test-projects }}
+      run: |
+        # Writes a solution filter next to the solution with the selected projects, which the Test step passes to
+        # `dotnet test --solution` instead of the solution itself.
+        split_names() {
+          printf '%s' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d'
+        }
+
+        solution="$SOLUTION_PATH"
+        if [ -d "$solution" ]; then
+          mapfile -t candidates < <(find "$solution" -maxdepth 1 -type f \( -name '*.sln' -o -name '*.slnx' \))
+          if [ "${#candidates[@]}" -ne 1 ]; then
+            echo "::error title=No single solution::'$SOLUTION_PATH' contains ${#candidates[@]} solution files; set 'solution-path' to one of them to select test projects."
+            exit 1
+          fi
+          solution="${candidates[0]}"
+        fi
+        case "$solution" in
+          *.sln|*.slnx) ;;
+          *) echo "::error title=Unsupported solution::Selecting test projects needs a .sln or .slnx solution, got '$solution'."; exit 1 ;;
+        esac
+
+        listing=$(dotnet sln "$solution" list)
+        mapfile -t projects < <(printf '%s\n' "$listing" | tr -d '\r' | tr '\\' '/' | grep -E 'proj$')
+        project_name() {
+          local file="${1##*/}"
+          printf '%s' "${file%.*}"
+        }
+
+        mapfile -t included < <(split_names "$TEST_PROJECTS")
+        mapfile -t excluded < <(split_names "$EXCLUDE_TEST_PROJECTS")
+        known=$(for project in "${projects[@]}"; do project_name "$project"; echo; done)
+        for name in "${included[@]}" "${excluded[@]}"; do
+          if ! grep -qxF -- "$name" <<< "$known"; then
+            echo "::error title=Unknown test project::'$name' is not a project in '$solution'."
+            exit 1
+          fi
+        done
+
+        selected=()
+        for project in "${projects[@]}"; do
+          name=$(project_name "$project")
+          if [ "${#included[@]}" -gt 0 ] && ! printf '%s\n' "${included[@]}" | grep -qxF -- "$name"; then
+            continue
+          fi
+          if [ "${#excluded[@]}" -gt 0 ] && printf '%s\n' "${excluded[@]}" | grep -qxF -- "$name"; then
+            continue
+          fi
+          selected+=("$project")
+        done
+        if [ "${#selected[@]}" -eq 0 ]; then
+          echo "::error title=No test projects::'test-projects' and 'exclude-test-projects' leave no project to test."
+          exit 1
+        fi
+
+        filter="$(dirname "$solution")/.build-and-test.slnf"
+        {
+          printf '{\n  "solution": {\n    "path": "%s",\n    "projects": [\n' "$(basename "$solution")"
+          for i in "${!selected[@]}"; do
+            separator=','
+            [ "$i" -eq $(( ${#selected[@]} - 1 )) ] && separator=''
+            printf '      "%s"%s\n' "${selected[$i]//\"/\\\"}" "$separator"
+          done
+          printf '    ]\n  }\n}\n'
+        } > "$filter"
+
+        echo "Testing ${#selected[@]} of ${#projects[@]} projects in $solution:"
+        printf '  %s\n' "${selected[@]}"
+        echo "solution=$filter" >> "$GITHUB_OUTPUT"
     - name: Restore dependencies
       shell: bash
       env:
@@ -156,11 +258,12 @@ runs:
         ARTIFACTS_PATH: ${{ github.workspace }}/artifacts
         CONFIGURATION: ${{ inputs.configuration }}
         SOLUTION_PATH: ${{ inputs.solution-path }}
+        TEST_SOLUTION: ${{ steps.test-selection.outputs.solution }}
       run: |
         dotnet test -c "$CONFIGURATION" \
         --no-build \
         --verbosity normal \
-        --solution "$SOLUTION_PATH" \
+        --solution "${TEST_SOLUTION:-$SOLUTION_PATH}" \
         -p:ArtifactsPath="$ARTIFACTS_PATH" \
         --coverage \
         --coverage-output-format cobertura \

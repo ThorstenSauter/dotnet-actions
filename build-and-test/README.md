@@ -8,6 +8,12 @@ is enabled by default, it runs all tests, collects Cobertura code coverage and p
 summary. The coverage summary is also published when tests fail. Playwright browsers can optionally be installed for
 the test projects that need them.
 
+The tests can be limited to some of the solution's projects with `test-projects`, or some projects can be skipped with
+`exclude-test-projects`, e.g. to run fast unit tests on every pull request and slow end-to-end tests in a separate job.
+The whole solution is still built. The action writes the selected projects to a solution filter,
+`.build-and-test.slnf`, next to the solution file and runs `dotnet test` on it. A name that matches no project in the
+solution fails the action before the build.
+
 ## Requirements
 
 - Tests are run with `dotnet test --solution ... --coverage`, which requires the
@@ -28,17 +34,19 @@ the test projects that need them.
 
 All boolean inputs accept `true` or `false` (case-insensitive); any other value fails the action.
 
-| Name                  | Required | Default       | Description                                                                                                                 |
-|-----------------------|----------|---------------|-----------------------------------------------------------------------------------------------------------------------------|
-| `nuget-feed-uri`      | no       | `''`          | The URI of a custom NuGet feed to connect to. Leave empty to only use the default feeds.                                    |
-| `nuget-auth-token`    | no       | `''`          | The token used to authenticate to the custom NuGet feed specified in `nuget-feed-uri`.                                      |
-| `configuration`       | no       | `Release`     | The configuration to build the solution in.                                                                                 |
-| `global-json-file`    | no       | `global.json` | The path to the `global.json` file specifying the .NET SDK version to install.                                              |
-| `solution-path`       | no       | `.`           | The path to the .NET solution file.                                                                                         |
-| `run-tests`           | no       | `true`        | Whether to run tests and publish coverage.                                                                                  |
-| `install-playwright`  | no       | `false`       | Whether to install Playwright browsers. Only applies when `run-tests` is `true`.                                            |
-| `playwright-projects` | no       | `''`          | Comma-separated list of test project names (not paths) that use Playwright, e.g. `MyApp.Tests.E2E,MyApp.Integration.Tests`. |
-| `playwright-browsers` | no       | `''`          | Comma-separated list of Playwright browsers to install, e.g. `chromium` or `chromium,firefox`. Empty installs all browsers.  |
+| Name                    | Required | Default       | Description                                                                                                                 |
+|-------------------------|----------|---------------|-----------------------------------------------------------------------------------------------------------------------------|
+| `nuget-feed-uri`        | no       | `''`          | The URI of a custom NuGet feed to connect to. Leave empty to only use the default feeds.                                    |
+| `nuget-auth-token`      | no       | `''`          | The token used to authenticate to the custom NuGet feed specified in `nuget-feed-uri`.                                      |
+| `configuration`         | no       | `Release`     | The configuration to build the solution in.                                                                                 |
+| `global-json-file`      | no       | `global.json` | The path to the `global.json` file specifying the .NET SDK version to install.                                              |
+| `solution-path`         | no       | `.`           | The path to the .NET solution file.                                                                                         |
+| `run-tests`             | no       | `true`        | Whether to run tests and publish coverage.                                                                                  |
+| `install-playwright`    | no       | `false`       | Whether to install Playwright browsers. Only applies when `run-tests` is `true`.                                            |
+| `playwright-projects`   | no       | `''`          | Comma-separated list of test project names (not paths) that use Playwright, e.g. `MyApp.Tests.E2E,MyApp.Integration.Tests`. |
+| `playwright-browsers`   | no       | `''`          | Comma-separated list of Playwright browsers to install, e.g. `chromium` or `chromium,firefox`. Empty installs all browsers.  |
+| `test-projects`         | no       | `''`          | Comma-separated list of project names (not paths) whose tests are run, e.g. `MyApp.Tests.Unit`. Empty runs every project.   |
+| `exclude-test-projects` | no       | `''`          | Comma-separated list of project names (not paths) whose tests are skipped, e.g. `MyApp.Tests.E2E`.                          |
 
 ## Example
 
@@ -82,6 +90,29 @@ jobs:
       - name: Build solution and run tests
         uses: ThorstenSauter/dotnet-actions/build-and-test@v4
         with:
+          install-playwright: 'true'
+          playwright-projects: 'MyApp.Tests.E2E'
+          playwright-browsers: 'chromium'
+```
+
+### Unit tests and end-to-end tests in separate jobs
+
+```yaml
+  unit-tests:
+    # ...
+    steps:
+      - name: Build solution and run unit tests
+        uses: ThorstenSauter/dotnet-actions/build-and-test@v4
+        with:
+          exclude-test-projects: 'MyApp.Tests.E2E'
+
+  e2e-tests:
+    # ...
+    steps:
+      - name: Build solution and run end-to-end tests
+        uses: ThorstenSauter/dotnet-actions/build-and-test@v4
+        with:
+          test-projects: 'MyApp.Tests.E2E'
           install-playwright: 'true'
           playwright-projects: 'MyApp.Tests.E2E'
           playwright-browsers: 'chromium'
