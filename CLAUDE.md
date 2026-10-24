@@ -38,6 +38,11 @@ actionlint only checks workflows; zizmor also audits `build-and-test/action.yml`
    fails) into step outputs. Later steps must gate on `steps.inputs.outputs.<name>`, never on raw `inputs.<name>`.
 2. `actions/setup-dotnet` with the SDK version from `global-json-file`. The NuGet feed is optional (an empty
    `source-url` is skipped).
+   - **Select test projects** (`id: test-selection`, only when `test-projects` or `exclude-test-projects` is set and
+     tests run): resolves `solution-path` to one `.sln`/`.slnx`, lists its projects with `dotnet sln list`, fails on a
+     name that matches no project or a selection that leaves none, and writes `.build-and-test.slnf` next to the
+     solution. It runs before the build so a typo fails fast. Project paths in the filter use `/` and the solution is
+     referenced by file name, which works on Windows too (`dotnet test --solution` accepts `.slnf` in MTP mode).
 3. `dotnet restore` → `dotnet build --no-restore`, both with `-p:ArtifactsPath=<workspace>/artifacts`.
 4. Playwright: for each project, runs
    `artifacts/bin/<project>/<configuration lowercased>/playwright.ps1 install [browsers] --with-deps`. Keep the `@(...)`
@@ -47,7 +52,8 @@ actionlint only checks workflows; zizmor also audits `build-and-test/action.yml`
    and passes them as masked step outputs to the Test step's `env` only. Don't `exportVariable` them, which would
    leak them to the caller's later steps.
 6. `dotnet test --no-build --solution ... --coverage --coverage-output-format cobertura --results-directory ./coverage`
-   (Microsoft.Testing.Platform-style `dotnet test`, not VSTest).
+   (Microsoft.Testing.Platform-style `dotnet test`, not VSTest). `--solution` is the generated solution filter when
+   test projects were selected.
 7. ReportGenerator → `$GITHUB_STEP_SUMMARY`, gated on `!cancelled()` and on coverage files existing, so a coverage
    summary still appears when tests fail.
 
@@ -84,7 +90,9 @@ is no stored API key input on purpose.
 ## CI and releases
 
 - `.github/workflows/ci.yml`: actionlint + zizmor, then runs `./build-and-test` against `tests/SelfTest.slnx` on
-  Ubuntu (x64 and arm64) and Windows (including a Playwright chromium E2E test), plus a build-only run with
+  Ubuntu (x64 and arm64) and Windows (including a Playwright chromium E2E test), a test project selection run
+  (`test-projects` and `exclude-test-projects` on Ubuntu arm64 and Windows, without browsers, so running
+  `SelfTest.E2E` by mistake fails), plus a build-only run with
   `run-tests: 'False'` and a pack-only run of `./pack-and-publish` (`publish: 'False'`, version `v1.2.3-ci.4`) that
   checks the normalized version and the produced `.nupkg`. Publishing itself is only exercised by consuming repos.
   `.github/zizmor.yml` suppresses `self-repository` for `ci.yml` because actionlint doesn't support `$/` yet.

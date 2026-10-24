@@ -63,6 +63,40 @@ jobs:
         shell: bash
         run: test -s coveragereport/SummaryGithub.md
 
+  self-test-project-selection:
+    name: Self-test (${{ matrix.selection }} test projects, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-26.04-arm
+          - windows-latest
+        selection:
+          - include
+          - exclude
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No Playwright browsers are installed, so SelfTest.E2E fails the job if the selection doesn't leave it out.
+      - name: Build solution and run selected tests
+        uses: ./build-and-test
+        with:
+          exclude-test-projects: ${{ matrix.selection == 'exclude' && ' SelfTest.E2E ' || '' }} # Padded on purpose to cover trimming
+          solution-path: 'tests' # A directory on purpose to cover finding the solution file
+          test-projects: ${{ matrix.selection == 'include' && 'SelfTest.Tests,' || '' }} # Trailing comma on purpose
+      - name: Verify only the selected tests ran
+        shell: bash
+        run: |
+          grep -q 'SelfTest.Tests/SelfTest.Tests.csproj' tests/.build-and-test.slnf
+          if grep -q 'SelfTest.E2E' tests/.build-and-test.slnf; then exit 1; fi
+          test -s coveragereport/SummaryGithub.md
+
   self-test-build-only:
     name: Self-test (build only)
     runs-on: ubuntu-26.04-arm
