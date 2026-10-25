@@ -53,8 +53,16 @@ actionlint only checks workflows; zizmor also audits `build-and-test/action.yml`
    leak them to the caller's later steps.
 6. `dotnet test --no-build --solution ... --coverage --coverage-output-format cobertura --results-directory ./coverage`
    (Microsoft.Testing.Platform-style `dotnet test`, not VSTest). `--solution` is the generated solution filter when
-   test projects were selected.
-7. ReportGenerator → `$GITHUB_STEP_SUMMARY`, gated on `!cancelled()` and on coverage files existing, so a coverage
+   test projects were selected. `--coverage-settings` is the `coverage-settings` input or, when empty, the bundled
+   `build-and-test/coverage.settings.xml`, which keeps the extension's default attribute exclusions and drops `*.g.cs`
+   sources. Source generators don't reliably mark their output with `[GeneratedCode]`, so the file filter is what
+   leaves them out; keep both when editing it.
+7. **Report coverage of changed lines** (`id: changed-lines`, only when `changed-lines-base` is set):
+   `build-and-test/changed-lines-coverage.ps1` diffs the working tree against the base (`git diff --unified=0`),
+   intersects the added/changed lines with the Cobertura `lines/line` entries (merged across reports: covered if any
+   report has hits), writes `coveragereport/ChangedLinesGithub.md`, appends it to the job summary and sets the
+   `changed-lines-coverage` output. It fails only below `changed-lines-minimum`. Percentages use the invariant culture.
+8. ReportGenerator → `$GITHUB_STEP_SUMMARY`, gated on `!cancelled()` and on coverage files existing, so a coverage
    summary still appears when tests fail.
 
 **Script injection:** never interpolate `${{ inputs.* }}` into `run:` scripts. Pass inputs through `env:` and quote
@@ -92,7 +100,8 @@ is no stored API key input on purpose.
 - `.github/workflows/ci.yml`: actionlint + zizmor, then runs `./build-and-test` against `tests/SelfTest.slnx` on
   Ubuntu (x64 and arm64) and Windows (including a Playwright chromium E2E test), a test project selection run
   (`test-projects` and `exclude-test-projects` on Ubuntu arm64 and Windows, without browsers, so running
-  `SelfTest.E2E` by mistake fails), plus a build-only run with
+  `SelfTest.E2E` by mistake fails), a changed-lines run (Ubuntu arm64 and Windows) that rewrites `Calculator.cs`
+  uncommitted and checks the report against `HEAD` (one covered, one uncovered line), plus a build-only run with
   `run-tests: 'False'` and a pack-only run of `./pack-and-publish` (`publish: 'False'`, version `v1.2.3-ci.4`) that
   checks the normalized version and the produced `.nupkg`. Publishing itself is only exercised by consuming repos.
   `.github/zizmor.yml` suppresses `self-repository` for `ci.yml` because actionlint doesn't support `$/` yet.
