@@ -8,6 +8,18 @@ is enabled by default, it runs all tests, collects Cobertura code coverage and p
 summary. The coverage summary is also published when tests fail. Playwright browsers can optionally be installed for
 the test projects that need them.
 
+Generated code is left out of the coverage by default: the action passes its own
+[`coverage.settings.xml`](./coverage.settings.xml) to the coverage extension, which excludes source generator output
+(`*.g.cs` files, e.g. `[LoggerMessage]` and `[GeneratedRegex]` code) and code marked with `[GeneratedCode]`,
+`[CompilerGenerated]`, `[ExcludeFromCodeCoverage]`, `[DebuggerHidden]` or `[DebuggerNonUserCode]`. Pass your
+own [settings file](https://learn.microsoft.com/dotnet/core/testing/microsoft-testing-platform-extensions-code-coverage)
+with `coverage-settings` to change that.
+
+With `changed-lines-base`, the action also reports how many of the lines changed since that git revision are covered,
+per file with the uncovered line numbers, at the top of the job summary. Only lines that appear in the coverage
+report count, so comments, blank lines, generated code and non-.NET files are ignored. The report only fails the action
+when `changed-lines-minimum` is set and the coverage is below it.
+
 The tests can be limited to some of the solution's projects with `test-projects`, or some projects can be skipped with
 `exclude-test-projects`, e.g. to run fast unit tests on every pull request and slow end-to-end tests in a separate job.
 The whole solution is still built. The action writes the selected projects to a solution filter,
@@ -47,6 +59,15 @@ All boolean inputs accept `true` or `false` (case-insensitive); any other value 
 | `playwright-browsers`   | no       | `''`          | Comma-separated list of Playwright browsers to install, e.g. `chromium` or `chromium,firefox`. Empty installs all browsers.  |
 | `test-projects`         | no       | `''`          | Comma-separated list of project names (not paths) whose tests are run, e.g. `MyApp.Tests.Unit`. Empty runs every project.   |
 | `exclude-test-projects` | no       | `''`          | Comma-separated list of project names (not paths) whose tests are skipped, e.g. `MyApp.Tests.E2E`.                          |
+| `coverage-settings`     | no       | `''`          | The path to a code coverage XML settings file. Empty uses the action's own settings, which leave out generated code.        |
+| `changed-lines-base`    | no       | `''`          | A git revision to report the coverage of changed lines against, e.g. `HEAD^1` on a pull request's merge commit.             |
+| `changed-lines-minimum` | no       | `''`          | The coverage of changed lines in percent (0-100) below which the action fails. Empty never fails.                           |
+
+## Outputs
+
+| Name                     | Description                                                                                                                     |
+|--------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `changed-lines-coverage` | The percentage of coverable changed lines that are covered, e.g. `87.5`. Empty without `changed-lines-base` or coverable lines. |
 
 ## Example
 
@@ -93,6 +114,24 @@ jobs:
           install-playwright: 'true'
           playwright-projects: 'MyApp.Tests.E2E'
           playwright-browsers: 'chromium'
+```
+
+### Coverage of a pull request's changed lines
+
+On `pull_request`, `actions/checkout` checks out the merge commit, whose first parent is the base branch, so
+diffing against `HEAD^1` gives exactly the pull request's changes. Fetch one more commit for it:
+
+```yaml
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Build solution and run tests
+        uses: ThorstenSauter/dotnet-actions/build-and-test@v4
+        with:
+          changed-lines-base: 'HEAD^1'
+          changed-lines-minimum: '80' # Optional; without it the report never fails the job
 ```
 
 ### Unit tests and end-to-end tests in separate jobs

@@ -59,9 +59,61 @@ jobs:
           playwright-browsers: 'chromium'
           playwright-projects: 'SelfTest.E2E'
           solution-path: 'tests/SelfTest.slnx'
-      - name: Verify coverage summary was generated
+      - name: Verify coverage summary was generated without generated code
         shell: bash
-        run: test -s coveragereport/SummaryGithub.md
+        run: |
+          test -s coveragereport/SummaryGithub.md
+          # Patterns.Digits is a [GeneratedRegex], whose code the default coverage settings leave out.
+          if grep -rq --include='*.cobertura.xml' '\.g\.cs"' coverage; then exit 1; fi
+          grep -rq --include='*.cobertura.xml' 'Calculator\.cs"' coverage
+
+  self-test-changed-lines:
+    name: Self-test (changed lines, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-26.04-arm
+          - windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Uncommitted changes count against the base too: line 5 changes and stays covered, line 7 is new and uncovered.
+      - name: Change the sample code
+        shell: bash
+        run: |
+          cat > tests/SelfTest/Calculator.cs <<'EOF'
+          namespace SelfTest;
+
+          public static class Calculator
+          {
+              public static int Add(int a, int b) => checked(a + b);
+
+              public static int Subtract(int a, int b) => a - b;
+          }
+          EOF
+          git diff --unified=0
+      - name: Build solution and run tests
+        id: build-and-test
+        uses: ./build-and-test
+        with:
+          changed-lines-base: 'HEAD'
+          changed-lines-minimum: '50'
+          exclude-test-projects: 'SelfTest.E2E'
+          solution-path: 'tests/SelfTest.slnx'
+      - name: Verify the changed lines were reported
+        shell: bash
+        env:
+          CHANGED_LINES_COVERAGE: ${{ steps.build-and-test.outputs.changed-lines-coverage }}
+        run: |
+          test "$CHANGED_LINES_COVERAGE" = '50.0'
+          grep -F 'tests/SelfTest/Calculator.cs' coveragereport/ChangedLinesGithub.md | grep -qF '| 1 of 2 | 50.0% | 7 |'
 
   self-test-project-selection:
     name: Self-test (${{ matrix.selection }} test projects, ${{ matrix.os }})

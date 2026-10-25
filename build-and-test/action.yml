@@ -3,12 +3,38 @@ description: >-
   This action installs the .NET SDK with the version specified in the given `global.json` file and optionally connects
   it to a custom NuGet feed. It then builds the given solution with the given run configuration. As an optional step,
   which is enabled by default, it runs all tests, collects Cobertura code coverage and publishes a coverage summary to
-  the job summary. The tests can be narrowed to some of the solution's test projects or skip some of them.
+  the job summary, leaving out generated code. It can also report the coverage of the lines changed since a base
+  revision. The tests can be narrowed to some of the solution's test projects or skip some of them.
+outputs:
+  changed-lines-coverage:
+    description: >-
+      The percentage of coverable changed lines that are covered, with one decimal (e.g. "87.5"). Empty when
+      `changed-lines-base` isn't set or no changed line is coverable.
+    value: ${{ steps.changed-lines.outputs.percentage }}
 inputs:
+  changed-lines-base:
+    description: >-
+      A git revision to measure the coverage of changed lines against (e.g. "HEAD^1" for a pull request's merge commit,
+      checked out with `fetch-depth: 2`). The coverage of the lines that differ from it is added to the job summary.
+      Defaults to "" which skips the report.
+    required: false
+    default: ''
+  changed-lines-minimum:
+    description: >-
+      The percentage (0-100) of coverable changed lines that must be covered, or the action fails. Only applies when
+      `changed-lines-base` is set. Defaults to "" which never fails.
+    required: false
+    default: ''
   configuration:
     description: 'The configuration to build the solution in. Defaults to "Release".'
     required: false
     default: 'Release'
+  coverage-settings:
+    description: >-
+      The path to a code coverage XML settings file for Microsoft.Testing.Extensions.CodeCoverage. Defaults to "" which
+      uses the action's own settings, excluding generated code (`*.g.cs` sources and the generated-code attributes).
+    required: false
+    default: ''
   exclude-test-projects:
     description: >-
       Comma-separated list of project names (not paths) in the solution whose tests are skipped (e.g.,
@@ -65,6 +91,8 @@ runs:
       id: inputs
       shell: bash
       env:
+        CHANGED_LINES_BASE: ${{ inputs.changed-lines-base }}
+        CHANGED_LINES_MINIMUM: ${{ inputs.changed-lines-minimum }}
         EXCLUDE_TEST_PROJECTS: ${{ inputs.exclude-test-projects }}
         INSTALL_PLAYWRIGHT: ${{ inputs.install-playwright }}
         NUGET_AUTH_TOKEN: ${{ inputs.nuget-auth-token }}
@@ -102,6 +130,19 @@ runs:
           fi
         fi
         echo "select-test-projects=$select_test_projects" >> "$GITHUB_OUTPUT"
+
+        if [ -n "$CHANGED_LINES_MINIMUM" ]; then
+          if ! printf '%s' "$CHANGED_LINES_MINIMUM" | grep -Eq '^(100(\.0+)?|[0-9]{1,2}(\.[0-9]+)?)$'; then
+            echo "::error title=Invalid input::'changed-lines-minimum' must be a number from 0 to 100, got '$CHANGED_LINES_MINIMUM'."
+            exit 1
+          fi
+          if [ -z "$CHANGED_LINES_BASE" ]; then
+            echo "::warning title=Unused input::'changed-lines-minimum' is set but 'changed-lines-base' is empty; it is ignored."
+          fi
+        fi
+        if [ -n "$CHANGED_LINES_BASE" ] && [ "$run_tests" = false ]; then
+          echo "::warning title=Unused input::'changed-lines-base' is set but 'run-tests' is 'false'; it is ignored."
+        fi
     - name: Setup .NET
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
@@ -257,6 +298,8 @@ runs:
         ACTIONS_RUNTIME_TOKEN: ${{ steps.runtime.outputs.token }}
         ARTIFACTS_PATH: ${{ github.workspace }}/artifacts
         CONFIGURATION: ${{ inputs.configuration }}
+        COVERAGE_SETTINGS: ${{ inputs.coverage-settings }}
+        DEFAULT_COVERAGE_SETTINGS: ${{ github.action_path }}/coverage.settings.xml
         SOLUTION_PATH: ${{ inputs.solution-path }}
         TEST_SOLUTION: ${{ steps.test-selection.outputs.solution }}
       run: |
@@ -267,7 +310,19 @@ runs:
         -p:ArtifactsPath="$ARTIFACTS_PATH" \
         --coverage \
         --coverage-output-format cobertura \
+        --coverage-settings "${COVERAGE_SETTINGS:-$DEFAULT_COVERAGE_SETTINGS}" \
         --results-directory ./coverage
+    - name: Report coverage of changed lines
+      id: changed-lines
+      # Appends its own section to the job summary, ahead of the ReportGenerator summary.
+      if: ${{ !cancelled() && steps.inputs.outputs.run-tests == 'true' && inputs.changed-lines-base != '' && hashFiles('coverage/**/*.cobertura.xml') != '' }}
+      shell: pwsh
+      env:
+        CHANGED_LINES_BASE: ${{ inputs.changed-lines-base }}
+        CHANGED_LINES_MINIMUM: ${{ inputs.changed-lines-minimum }}
+        COVERAGE_DIRECTORY: coverage
+        REPORT_PATH: coveragereport/ChangedLinesGithub.md
+      run: '& "$env:GITHUB_ACTION_PATH/changed-lines-coverage.ps1"'
     - name: ReportGenerator
       id: reportgenerator
       # Also runs when tests fail, as long as coverage was collected.
