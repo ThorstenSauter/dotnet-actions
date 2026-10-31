@@ -327,7 +327,7 @@ runs:
       id: reportgenerator
       # Also runs when tests fail, as long as coverage was collected.
       if: ${{ !cancelled() && steps.inputs.outputs.run-tests == 'true' && hashFiles('coverage/**/*.cobertura.xml') != '' }}
-      uses: danielpalme/ReportGenerator-GitHub-Action@d3ebf1f760f7d8ab92cc44d9bcfee7ad73722a31 # v5.5.11
+      uses: danielpalme/ReportGenerator-GitHub-Action@861674232075b2c6bd1405a04c4bb9b150653e81 # v5.5.12
       with:
         reports: 'coverage/**/*.cobertura.xml'
         targetdir: 'coveragereport'
