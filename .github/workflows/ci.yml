@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Run actionlint
@@ -29,7 +29,7 @@ jobs:
         with:
           args: -color
       - name: Run zizmor
-        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        uses: zizmorcore/zizmor-action@v0.8.1
         with:
           advanced-security: false
 
@@ -49,11 +49,11 @@ jobs:
           - windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Build solution and run tests
-        uses: ./build-and-test
+        uses: $/build-and-test
         with:
           install-playwright: 'true'
           playwright-browsers: 'chromium'
@@ -81,7 +81,7 @@ jobs:
           - windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       # Uncommitted changes count against the base too: line 5 changes and stays covered, line 7 is new and uncovered.
@@ -101,7 +101,7 @@ jobs:
           git diff --unified=0
       - name: Build solution and run tests
         id: build-and-test
-        uses: ./build-and-test
+        uses: $/build-and-test
         with:
           changed-lines-base: 'HEAD'
           changed-lines-minimum: '50'
@@ -132,12 +132,12 @@ jobs:
           - exclude
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       # No Playwright browsers are installed, so SelfTest.E2E fails the job if the selection doesn't leave it out.
       - name: Build solution and run selected tests
-        uses: ./build-and-test
+        uses: $/build-and-test
         with:
           exclude-test-projects: ${{ matrix.selection == 'exclude' && ' SelfTest.E2E ' || '' }} # Padded on purpose to cover trimming
           solution-path: 'tests' # A directory on purpose to cover finding the solution file
@@ -157,11 +157,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Build solution
-        uses: ./build-and-test
+        uses: $/build-and-test
         with:
           run-tests: 'False' # Mixed case on purpose to cover input normalization
           solution-path: 'tests/SelfTest.slnx'
@@ -177,12 +177,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Pack without publishing
         id: pack
-        uses: ./pack-and-publish
+        uses: $/pack-and-publish
         with:
           project-path: 'tests/SelfTest/SelfTest.csproj'
           publish: 'False' # Mixed case on purpose to cover input normalization
