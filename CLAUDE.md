@@ -114,8 +114,11 @@ is no stored API key input on purpose.
 
 ## Conventions
 
-- **Pin third-party actions by full commit SHA** with a trailing `# vX.Y.Z` comment. Renovate
-  (`.github/renovate.json`, extending `local>ThorstenSauter/renovate-config`) updates these pins and comments.
+- **Reference third-party actions by full version tag** (`@vX.Y.Z`), in workflows and in the action files alike.
+  `.github/workflows/actions.lock` locks the commits, and CI runs this repo's actions as `$/build-and-test` so the
+  lockfile covers the actions they use. Renovate (`.github/renovate.json`, extending
+  `local>ThorstenSauter/renovate-config`) updates the tags and regenerates the lockfile. After changing a `uses:` line by
+  hand, run `gh actions-lock --migrate-local-actions` and commit the lockfile.
 - New inputs should be optional with a backward-compatible default.
 - Commit messages use Conventional Commits (`feat:`, `fix:`, `chore(deps):`).
 - The READMEs are UTF-8 with BOM (the Write tool drops it, so re-add it). `action.yml` files must not have a BOM:
