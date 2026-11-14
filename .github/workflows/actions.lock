@@ -9,7 +9,7 @@ workflows:
         - 'actions/github-script@v9.0.0'
         - 'actions/setup-dotnet@v6.1.0'
         - 'actions/upload-artifact@v7.0.2'
-        - 'danielpalme/reportgenerator-github-action@v5.5.12'
+        - 'danielpalme/reportgenerator-github-action@v5.6.0'
         - 'nuget/login@v1.2.0'
         - 'zizmorcore/zizmor-action@v0.8.1'
     '.github/workflows/release.yml': []
@@ -39,9 +39,9 @@ dependencies:
         commit: 'sha1-cf430e030ddbb5b0abf93d22962f4752f3646cd9'
         owner_id: 44036562
         repo_id: 192625955
-    'danielpalme/reportgenerator-github-action@v5.5.12':
-        ref: 'v5.5.12'
-        commit: 'sha1-861674232075b2c6bd1405a04c4bb9b150653e81'
+    'danielpalme/reportgenerator-github-action@v5.6.0':
+        ref: 'v5.6.0'
+        commit: 'sha1-5f3701a41d14548c9b8e575a5c235230e515cbc0'
         owner_id: 859606
         repo_id: 240972573
     'github/codeql-action@9b3254085494b55a0f7c4c2b3d2d52cc712ce370':
